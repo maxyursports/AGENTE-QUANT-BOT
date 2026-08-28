@@ -1,35 +1,54 @@
 """
 Bot de Alertas en Vivo — Superagente Quant MAXYURSPORTS
 =========================================================
-Revisa las cuotas en vivo de los partidos permitidos (mismo alcance de
-ligas ya definido: Premier League, La Liga, Serie A, Bundesliga, Ligue 1,
-Champions/Europa/Conference, Liga BetPlay, Brasileirão, Argentina, Chile,
-Uruguay, Liga MX, MLS) y, cuando detecta que el favorito va perdiendo o
-empatando, calcula la cobertura exacta con hedge_calculator.py y manda
-la alerta lista a Telegram.
+Revisa los partidos EN CURSO de las ligas permitidas, detecta cuándo el
+favorito (según la cuota promedio en vivo) va perdiendo o empatando, y
+calcula la cobertura exacta (hedge_calculator.py) antes de mandar la
+alerta a Telegram.
 
-Pensado para correr solo, sin supervisión, cada N minutos vía GitHub
-Actions (ver .github/workflows/monitor_partidos.yml) — gratis, sin
-depender de que tu computador esté prendido ni de esta conversación.
+Corre solo, sin supervisión, vía GitHub Actions (ver
+.github/workflows/monitor_partidos.yml) — gratis, sin depender de que
+tu computador esté prendido ni de una conversación activa.
 
-CREDENCIALES: nunca van escritas aquí. Se leen de variables de entorno
-(en GitHub Actions se configuran como "Secrets", nunca quedan visibles
-en el código ni en el repositorio).
+FUENTE DE DATOS: The Odds API (https://the-odds-api.com), plan gratuito.
+
+=====================================================================
+IMPORTANTE — LÍMITE REAL DEL PLAN GRATUITO (léelo antes de tocar nada)
+=====================================================================
+El plan gratuito da 500 "créditos" AL MES, no al día. Cada consulta de
+marcadores (/scores) cuesta 1 crédito por liga, y cada consulta de
+cuotas (/odds) cuesta (mercados x regiones) créditos.
+
+Revisar las 13 ligas permitidas UNA sola vez ya cuesta ~13 créditos.
+Si esto corriera cada 15 minutos, se acabarían los 500 créditos del
+mes completo en menos de un día. Por eso, mientras estemos en el plan
+gratuito, este script:
+  1) Solo revisa un subconjunto reducido de ligas prioritarias por
+     corrida (ver LIGAS_A_REVISAR más abajo), no las 13 completas.
+  2) Se ejecuta pocas veces al día (ver el cron en monitor_partidos.yml,
+     por defecto cada 8 horas) — NO es monitoreo minuto a minuto.
+  3) Se detiene solo si detecta que quedan pocos créditos disponibles
+     ese mes (usando los encabezados que devuelve la API).
+
+Esto es una limitación real del plan gratuito, no un error de código.
+Si en algún momento se quiere cobertura más completa y frecuente (las
+13 ligas, cada 15-30 minutos), hay que pasar al plan de pago de
+The Odds API (USD $30/mes, 20,000 créditos) — eso sí se financia con
+las ganancias de las apuestas, como se acordó, y solo se activa si el
+usuario lo decide explícitamente.
+=====================================================================
 
 Variables de entorno requeridas:
-    TELEGRAM_BOT_TOKEN   -> el token que te da @BotFather
-    TELEGRAM_CHAT_ID     -> tu chat id (te lo doy el paso a paso en el README)
-    ODDS_API_KEY         -> tu llave gratuita de odds-api.io (o el proveedor que uses)
-
-Este archivo es un ESQUELETO funcional: la conexión a Telegram y el
-cálculo de cobertura ya están completos y probados. La función
-`obtener_partidos_en_vivo()` trae un ejemplo de integración con
-odds-api.io que debes ajustar según el proveedor de datos que
-finalmente elijamos (dejo comentarios donde hay que adaptar).
+    TELEGRAM_BOT_TOKEN   -> el token que dio @BotFather
+    TELEGRAM_CHAT_ID     -> el chat id del usuario
+    ODDS_API_KEY         -> la llave gratuita de the-odds-api.com
 """
 
+import json
 import os
-import sys
+import pathlib
+from datetime import datetime, timezone
+
 import requests
 
 from hedge_calculator import analizar_cobertura
@@ -42,31 +61,76 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 
-# Mismo alcance de ligas ya acordado — NUNCA "todas las ligas del mundo".
-# Ajusta estos códigos al formato exacto que use el proveedor de cuotas.
-LIGAS_PERMITIDAS = [
-    "soccer_epl",              # Premier League
-    "soccer_spain_la_liga",    # La Liga
-    "soccer_italy_serie_a",    # Serie A
-    "soccer_germany_bundesliga",
-    "soccer_france_ligue_one",
+ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+
+# Las 13 ligas que The Odds API SÍ cubre, de las que definimos como
+# permitidas. OJO: Liga BetPlay (Colombia) y Primera División de
+# Uruguay NO aparecen en el catálogo de este proveedor gratuito — no
+# es un descarte nuestro, es que esta fuente de datos no las tiene.
+# Si se consigue otra fuente que sí las cubra, se agregan aparte.
+LIGAS_TODAS = [
+    "soccer_epl",
+    "soccer_spain_la_liga",
     "soccer_uefa_champs_league",
     "soccer_uefa_europa_league",
     "soccer_uefa_europa_conference_league",
-    "soccer_colombia_primera_a",
+    "soccer_germany_bundesliga",
+    "soccer_italy_serie_a",
+    "soccer_france_ligue_one",
     "soccer_brazil_campeonato",
     "soccer_argentina_primera_division",
-    "soccer_chile_primera_division",
-    "soccer_usa_mls",
     "soccer_mexico_ligamx",
-    # Uruguay: agregar el código exacto cuando confirmemos que el
-    # proveedor de datos lo cubre.
+    "soccer_usa_mls",
+    "soccer_chile_campeonato",
 ]
 
-# Umbral: cuánto tiene que subir la cuota del "no favorito" para que
-# consideremos que vale la pena avisar (evita spam de alertas por
-# movimientos insignificantes).
-UMBRAL_CUOTA_MINIMA_ALERTA = 3.0
+# Subconjunto que SÍ revisamos mientras estemos en el plan gratuito
+# (ver la explicación de créditos arriba). Cambia esta lista si quieres
+# priorizar otras ligas -- el orden importa poco, pero mientras más
+# ligas pongas aquí, menos veces al día alcanza el presupuesto gratis.
+USAR_SOLO_PRIORITARIAS = True
+LIGAS_PRIORITARIAS = [
+    "soccer_epl",
+    "soccer_spain_la_liga",
+    "soccer_uefa_champs_league",
+    "soccer_brazil_campeonato",
+    "soccer_mexico_ligamx",
+]
+LIGAS_A_REVISAR = LIGAS_PRIORITARIAS if USAR_SOLO_PRIORITARIAS else LIGAS_TODAS
+
+# No alertar en los primeros minutos (un gol tempranero no es señal
+# fuerte todavía) ni en el descuento final (ya no da tiempo real para
+# que la cobertura tenga sentido).
+MINUTO_MINIMO_ALERTA = 30
+MINUTO_MAXIMO_ALERTA = 88
+
+# Cuota mínima de la opción "contraria" para que valga la pena avisar.
+UMBRAL_CUOTA_MINIMA_ALERTA = 2.2
+
+# Frena la ronda si quedan menos de este número de créditos en el mes,
+# para nunca dejar la cuenta en cero sin darnos cuenta.
+COLCHON_MINIMO_CREDITOS = 15
+
+ESTADO_PATH = pathlib.Path(__file__).parent / "estado" / "alertas_enviadas.json"
+
+
+# ---------------------------------------------------------------------
+# ESTADO (para no repetir la misma alerta en cada corrida)
+# ---------------------------------------------------------------------
+
+def cargar_alertas_enviadas() -> set:
+    if not ESTADO_PATH.exists():
+        return set()
+    try:
+        data = json.loads(ESTADO_PATH.read_text())
+        return set(data.get("event_ids", []))
+    except Exception:
+        return set()
+
+
+def guardar_alertas_enviadas(ids: set) -> None:
+    ESTADO_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ESTADO_PATH.write_text(json.dumps({"event_ids": sorted(ids)}, indent=2))
 
 
 # ---------------------------------------------------------------------
@@ -74,19 +138,13 @@ UMBRAL_CUOTA_MINIMA_ALERTA = 3.0
 # ---------------------------------------------------------------------
 
 def enviar_alerta_telegram(mensaje: str) -> bool:
-    """Envía un mensaje al chat de Telegram configurado. Devuelve True/False."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[ERROR] Falta TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID en el entorno.")
         return False
-
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     resp = requests.post(
         url,
-        data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": mensaje,
-            "parse_mode": "HTML",
-        },
+        data={"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"},
         timeout=15,
     )
     if resp.status_code != 200:
@@ -96,90 +154,199 @@ def enviar_alerta_telegram(mensaje: str) -> bool:
 
 
 # ---------------------------------------------------------------------
-# DATOS EN VIVO (ADAPTAR AL PROVEEDOR ELEGIDO)
+# THE ODDS API
 # ---------------------------------------------------------------------
 
-def obtener_partidos_en_vivo():
-    """
-    Ejemplo de integración con odds-api.io (plan gratuito: 100
-    consultas/hora, 500/día, cuotas en vivo + pre-partido).
+def _creditos_restantes(resp: requests.Response):
+    try:
+        return int(resp.headers.get("x-requests-remaining", "-1"))
+    except (TypeError, ValueError):
+        return -1
 
-    Devuelve una lista de diccionarios, uno por partido en vivo dentro
-    del alcance de ligas permitidas, con al menos:
-        {
-            "partido": "Equipo A vs Equipo B",
-            "liga": "soccer_epl",
-            "minuto": 62,
-            "marcador": "1-0",
-            "favorito_va_perdiendo_o_empatando": True/False,
-            "cuota_original_favorito": 1.45,
-            "cuota_en_vivo_contraria": 4.20,   # empate o rival, la que aplique
-        }
 
-    IMPORTANTE: este cuerpo es un EJEMPLO — el endpoint y los campos
-    exactos hay que ajustarlos una vez elijamos el proveedor final y
-    confirmemos qué casas de apuestas cubre el plan gratuito.
-    """
+def obtener_marcadores_en_vivo(sport_key: str):
+    """Partidos EN CURSO (ya empezaron, no han terminado) de una liga."""
     if not ODDS_API_KEY:
-        print("[ERROR] Falta ODDS_API_KEY en el entorno.")
-        return []
+        return [], -1
+    url = f"{ODDS_API_BASE}/sports/{sport_key}/scores/"
+    try:
+        resp = requests.get(url, params={"apiKey": ODDS_API_KEY}, timeout=20)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"[ERROR] scores {sport_key}: {e}")
+        return [], -1
+    restantes = _creditos_restantes(resp)
+    partidos = resp.json()
+    en_curso = [p for p in partidos if not p.get("completed") and p.get("scores")]
+    return en_curso, restantes
 
-    partidos_detectados = []
 
-    # --- EJEMPLO de llamada (ajustar a la doc real del proveedor) ---
-    # resp = requests.get(
-    #     "https://api.odds-api.io/v3/odds/live",
-    #     params={"apiKey": ODDS_API_KEY, "sport": "soccer", "regions": "eu"},
-    #     timeout=20,
-    # )
-    # data = resp.json()
-    # for partido in data:
-    #     if partido["league_code"] not in LIGAS_PERMITIDAS:
-    #         continue
-    #     ... lógica para detectar favorito abajo/empatando y
-    #     armar el diccionario de arriba ...
+def obtener_cuotas_actuales(sport_key: str):
+    """Cuotas h2h (1X2) actuales, indexadas por id de partido."""
+    if not ODDS_API_KEY:
+        return {}, -1
+    url = f"{ODDS_API_BASE}/sports/{sport_key}/odds/"
+    try:
+        resp = requests.get(
+            url,
+            params={
+                "apiKey": ODDS_API_KEY,
+                "regions": "eu",
+                "markets": "h2h",
+                "oddsFormat": "decimal",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"[ERROR] odds {sport_key}: {e}")
+        return {}, -1
+    restantes = _creditos_restantes(resp)
+    return {p["id"]: p for p in resp.json()}, restantes
 
-    return partidos_detectados
+
+def promedio_cuotas_h2h(partido_odds: dict) -> dict:
+    """Promedia la cuota h2h entre todas las casas para no depender de
+    una sola. Devuelve {nombre_equipo_o_'Draw': cuota_promedio}."""
+    acumulado, conteo = {}, {}
+    for bookmaker in partido_odds.get("bookmakers", []):
+        for market in bookmaker.get("markets", []):
+            if market.get("key") != "h2h":
+                continue
+            for outcome in market.get("outcomes", []):
+                nombre, precio = outcome["name"], outcome["price"]
+                acumulado[nombre] = acumulado.get(nombre, 0) + precio
+                conteo[nombre] = conteo.get(nombre, 0) + 1
+    return {n: acumulado[n] / conteo[n] for n in acumulado}
+
+
+def minutos_transcurridos(commence_time_iso: str) -> float:
+    inicio = datetime.fromisoformat(commence_time_iso.replace("Z", "+00:00"))
+    ahora = datetime.now(timezone.utc)
+    return (ahora - inicio).total_seconds() / 60
 
 
 # ---------------------------------------------------------------------
 # LÓGICA PRINCIPAL
 # ---------------------------------------------------------------------
 
-def formatear_alerta(partido: dict) -> str:
+def evaluar_partido(marcador: dict, cuotas_por_id: dict):
+    """Devuelve la info de la alerta si el favorito va perdiendo o
+    empatando dentro de la ventana de minutos permitida, o None."""
+    event_id = marcador["id"]
+    partido_odds = cuotas_por_id.get(event_id)
+    if not partido_odds:
+        return None
+
+    minuto = minutos_transcurridos(marcador["commence_time"])
+    if minuto < MINUTO_MINIMO_ALERTA or minuto > MINUTO_MAXIMO_ALERTA:
+        return None
+
+    cuotas = promedio_cuotas_h2h(partido_odds)
+    home, away = marcador["home_team"], marcador["away_team"]
+    equipos_sin_empate = {k: v for k, v in cuotas.items() if k in (home, away)}
+    if len(equipos_sin_empate) < 2:
+        return None
+
+    scores = {
+        s["name"]: int(s["score"])
+        for s in marcador.get("scores", [])
+        if s.get("score") is not None
+    }
+    if home not in scores or away not in scores:
+        return None
+
+    favorito = min(equipos_sin_empate, key=equipos_sin_empate.get)
+    rival = away if favorito == home else home
+
+    if scores[favorito] > scores[rival]:
+        return None  # el favorito va ganando, nada que avisar
+
+    cuota_favorito = equipos_sin_empate[favorito]
+    cuota_empate = cuotas.get("Draw")
+    cuota_rival = equipos_sin_empate[rival]
+    opciones_contrarias = [c for c in (cuota_empate, cuota_rival) if c]
+    if not opciones_contrarias:
+        return None
+    cuota_contraria = max(opciones_contrarias)
+
+    if cuota_contraria < UMBRAL_CUOTA_MINIMA_ALERTA:
+        return None
+
     cobertura = analizar_cobertura(
-        stake_original=1.0,  # referencia por unidad de banca; el usuario escala
-        cuota_original=partido["cuota_original_favorito"],
-        cuota_cobertura=partido["cuota_en_vivo_contraria"],
+        stake_original=1.0,
+        cuota_original=cuota_favorito,
+        cuota_cobertura=cuota_contraria,
     )
+
+    return {
+        "event_id": event_id,
+        "partido": f"{home} vs {away}",
+        "minuto_aprox": round(minuto),
+        "marcador": f"{scores[home]}-{scores[away]}",
+        "favorito": favorito,
+        "cuota_favorito_ahora": round(cuota_favorito, 2),
+        "cuota_contraria": round(cuota_contraria, 2),
+        "cobertura": cobertura,
+    }
+
+
+def formatear_alerta(info: dict) -> str:
+    c = info["cobertura"]
     return (
-        f"⚠️ <b>Repricing detectado</b>\n"
-        f"{partido['partido']} ({partido['liga']})\n"
-        f"Minuto {partido['minuto']} — Marcador {partido['marcador']}\n\n"
-        f"Cuota contraria en vivo: {partido['cuota_en_vivo_contraria']:.2f}\n\n"
-        f"Por cada 1 unidad apostada originalmente:\n"
-        f"• Cobertura ganancia igual: {cobertura.stake_cobertura_ganancia_igual:.2f} u. "
-        f"→ ganancia garantizada {cobertura.ganancia_garantizada:.2f} u.\n"
-        f"• Cobertura solo recuperar: {cobertura.stake_cobertura_solo_recuperar:.2f} u.\n\n"
-        f"Recuerda: esto NO confirma valor por sí solo — confírmalo conmigo "
-        f"antes de apostar si quieres el análisis de probabilidad real."
+        f"⚠️ <b>Favorito complicado</b>\n"
+        f"{info['partido']}\n"
+        f"Minuto aprox. {info['minuto_aprox']} — Marcador {info['marcador']}\n\n"
+        f"{info['favorito']} era favorito (cuota ~{info['cuota_favorito_ahora']}) "
+        f"y no está ganando ahora mismo.\n"
+        f"Cuota contraria en vivo: {info['cuota_contraria']}\n\n"
+        f"Por cada 1 unidad apostada al favorito antes del partido:\n"
+        f"• Cobertura ganancia igual: {c.stake_cobertura_ganancia_igual:.2f} u. "
+        f"→ ganancia garantizada {c.ganancia_garantizada:.2f} u.\n"
+        f"• Cobertura solo recuperar: {c.stake_cobertura_solo_recuperar:.2f} u.\n\n"
+        f"Esto es un cálculo matemático de cobertura, no una confirmación de "
+        f"valor real — la cuota promedio puede diferir de la de tu casa. "
+        f"Confírmalo con el agente antes de apostar."
     )
 
 
-def ejecutar_ronda():
-    partidos = obtener_partidos_en_vivo()
-    if not partidos:
-        print("Sin partidos con repricing relevante en esta ronda.")
-        return
+def ejecutar_ronda() -> None:
+    ya_alertados = cargar_alertas_enviadas()
+    nuevos_alertados = set(ya_alertados)
+    creditos_restantes = None
 
-    for partido in partidos:
-        if not partido.get("favorito_va_perdiendo_o_empatando"):
+    for sport_key in LIGAS_A_REVISAR:
+        if creditos_restantes is not None and creditos_restantes < COLCHON_MINIMO_CREDITOS:
+            print(f"[AVISO] Quedan {creditos_restantes} créditos este mes — se detiene la ronda por seguridad.")
+            break
+
+        marcadores, restantes_scores = obtener_marcadores_en_vivo(sport_key)
+        if restantes_scores >= 0:
+            creditos_restantes = restantes_scores
+        if not marcadores:
             continue
-        if partido["cuota_en_vivo_contraria"] < UMBRAL_CUOTA_MINIMA_ALERTA:
-            continue
-        mensaje = formatear_alerta(partido)
-        enviado = enviar_alerta_telegram(mensaje)
-        print(f"Alerta {'enviada' if enviado else 'FALLÓ'}: {partido['partido']}")
+
+        cuotas_por_id, restantes_odds = obtener_cuotas_actuales(sport_key)
+        if restantes_odds >= 0:
+            creditos_restantes = restantes_odds
+
+        for marcador in marcadores:
+            event_id = marcador["id"]
+            if event_id in ya_alertados:
+                continue
+            info = evaluar_partido(marcador, cuotas_por_id)
+            if not info:
+                continue
+            enviado = enviar_alerta_telegram(formatear_alerta(info))
+            print(f"Alerta {'enviada' if enviado else 'FALLÓ'}: {info['partido']}")
+            if enviado:
+                nuevos_alertados.add(event_id)
+
+    if creditos_restantes is not None:
+        print(f"[INFO] Créditos restantes este mes (aprox.): {creditos_restantes}")
+
+    if nuevos_alertados != ya_alertados:
+        guardar_alertas_enviadas(nuevos_alertados)
 
 
 if __name__ == "__main__":
