@@ -1,9 +1,18 @@
 name: Monitor de partidos en vivo (Superagente Quant)
 
+# Cada 8 horas -- frecuencia elegida para respetar el presupuesto del
+# plan GRATUITO de The Odds API (500 créditos/mes). Revisar más ligas
+# o con más frecuencia agota el presupuesto del mes en pocos días; ver
+# la explicación completa al inicio de telegram_alert_bot.py.
+# Si en el futuro se pasa al plan de pago, este cron se puede acortar
+# (por ejemplo a "*/30 * * * *" para cada 30 minutos).
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 */8 * * *"
   workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 jobs:
   revisar-partidos:
@@ -26,3 +35,15 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: python telegram_alert_bot.py
+
+      - name: Guardar el registro de alertas ya enviadas
+        run: |
+          git config user.name "agente-quant-bot"
+          git config user.email "actions@github.com"
+          if [ -n "$(git status --porcelain estado/)" ]; then
+            git add estado/
+            git commit -m "Actualiza registro de alertas enviadas [skip ci]"
+            git push
+          else
+            echo "Sin cambios en el registro de alertas."
+          fi
