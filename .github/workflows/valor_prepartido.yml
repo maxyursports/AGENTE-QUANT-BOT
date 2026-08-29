@@ -1,16 +1,19 @@
 name: Valor pre-partido (Superagente Quant)
 
-# Corre unas horas antes de las principales tandas de partidos del
-# dia (America/Bogota = UTC-5). Los horarios en UTC de abajo cubren:
-#   - 09:00 UTC (04:00 Bogota) -> revisa partidos de la manana europea
-#   - 15:00 UTC (10:00 Bogota) -> revisa partidos de la tarde/noche Europa+Sudamerica
-#   - 20:00 UTC (15:00 Bogota) -> revisa partidos de la noche America
-# Ajustar estos horarios si el calendario de ligas cambia.
+# PAUSADO EN AUTOMATICO -- 2026-08-29 (aplicando el circuit breaker de
+# DISCIPLINA.md). Las primeras 2 corridas reales encontraron 23 y 15
+# "hallazgos" de valor respectivamente, una tasa demasiado alta para
+# ser creible como ventaja real -- el metodo de comparar la mejor cuota
+# contra la mediana del mercado sigue produciendo bastante ruido con
+# solo 5-8 casas por partido. Se quita el cron automatico (schedule) y
+# se deja SOLO ejecucion manual (workflow_dispatch) hasta que el metodo
+# se valide mejor (ver CHANGELOG.md) -- por ejemplo, comparando contra
+# el Brier score de un periodo de prueba, o incorporando el modelo Elo
+# propio (elo_model.py) como fuente adicional de probabilidad antes de
+# confiar en estas alertas. NO reactivar el cron sin antes documentar
+# la correccion en CHANGELOG.md (regla de disciplina, no ajustar en
+# caliente sin registrar el motivo).
 on:
-  schedule:
-    - cron: "0 9 * * *"
-    - cron: "0 15 * * *"
-    - cron: "0 20 * * *"
   workflow_dispatch: {}
 
 permissions:
