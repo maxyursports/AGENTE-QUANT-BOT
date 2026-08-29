@@ -47,3 +47,14 @@ Formato: fecha, que cambio, por que.
 - Extension a otros deportes como tenis (punto 39): sport_key
   disponibles en The Odds API, pero no verificados ni agregados
   todavia a LIGAS_A_REVISAR.
+
+## 2026-08-29 (mismo dia, correccion tras primera corrida real)
+
+- **Primera corrida real de valor_prepartido.py (manual)**: encontro 23 "hallazgos" de valor (umbral EV>=2%) y 5 de arbitraje. Cantidad sospechosamente alta comparada con el analisis manual del mismo dia (que con un metodo mas estricto no encontro nada). Diagnostico: comparar la MEJOR cuota (maximo entre 5-8 casas) contra un PROMEDIO que incluye esa misma cuota tiene sesgo de seleccion -- el maximo de varias muestras con ruido casi siempre supera el promedio, aunque el mercado sea eficiente.
+- **Correccion aplicada**: cuota_justa_por_devig() ahora usa la MEDIANA en vez del promedio (mas robusta a outliers), y UMBRAL_EV_MINIMO subio de 2% a 5%.
+- **Segunda corrida real (tras la correccion)**: bajo de 23 a 15 hallazgos de valor. Los 5 de arbitraje se mantuvieron igual (logico, ese calculo no depende del umbral ni del devig). 15 sigue siendo una tasa alta y no confiable.
+- **DECISION (circuit breaker, ver DISCIPLINA.md)**: se pausa el cron automatico de valor_prepartido.yml (dejando solo ejecucion manual) hasta validar el metodo con mas rigor. NO se debe reactivar el cron hasta:
+  1. Correr un backtest o periodo de prueba en modo "solo registro" (sin enviar a Telegram) para medir cuantos de estos hallazgos realmente se sostienen en el cierre de linea (Closing Line Value, punto 17).
+  2. Considerar excluir la propia cuota outlier del calculo de la mediana de referencia (leave-one-out), que es la forma tecnicamente correcta de evitar el sesgo de seleccion por completo.
+  3. Idealmente, cruzar contra el modelo Elo propio (elo_model.py) una vez tenga historial de resultados reales, en vez de depender solo de comparar casas entre si.
+- **Leccion aplicada del proyecto**: se prefirio pausar el sistema y reportar el problema honestamente en vez de dejarlo mandando alertas no validadas -- consistente con la regla anti-fabricacion (DISCIPLINA.md punto 1).
