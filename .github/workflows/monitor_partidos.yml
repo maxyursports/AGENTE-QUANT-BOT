@@ -1,14 +1,14 @@
 name: Monitor de partidos en vivo (Superagente Quant)
 
-# Cada 8 horas -- frecuencia elegida para respetar el presupuesto del
-# plan GRATUITO de The Odds API (500 créditos/mes). Revisar más ligas
-# o con más frecuencia agota el presupuesto del mes en pocos días; ver
-# la explicación completa al inicio de telegram_alert_bot.py.
-# Si en el futuro se pasa al plan de pago, este cron se puede acortar
-# (por ejemplo a "*/30 * * * *" para cada 30 minutos).
+# Cada 15 minutos -- con el plan de pago "20K" de The Odds API
+# (USD $30/mes, 20,000 créditos/mes, activo desde ago-2026) hay
+# presupuesto de sobra para revisar las 13 ligas completas a esta
+# frecuencia; ver la explicación completa al inicio de
+# telegram_alert_bot.py. El propio script se detiene solo si en algún
+# momento quedan pocos créditos disponibles ese mes.
 on:
   schedule:
-    - cron: "0 */8 * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 permissions:
