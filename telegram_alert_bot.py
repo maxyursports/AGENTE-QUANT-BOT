@@ -16,18 +16,20 @@ FUENTE DE DATOS: The Odds API (https://the-odds-api.com), plan de pago
 =====================================================================
 NOTA — PRESUPUESTO DE CRÉDITOS (plan de pago activo desde ago-2026)
 =====================================================================
-Con 20,000 créditos/mes hay margen de sobra para revisar las 13 ligas
+Con 20,000 créditos/mes hay margen de sobra para revisar 25 ligas
 del catálogo en cada corrida, incluso con el cron corriendo cada
-15-30 minutos (revisar las 13 ligas cuesta ~13-26 créditos por
-corrida; a una corrida cada 15 min eso son ~1,200-2,500 créditos/día
+15-30 minutos (revisar 25 ligas cuesta ~25-50 créditos por
+corrida; a una corrida cada 15 min eso son ~2,400-4,800 créditos/día
 en el peor caso, muy por debajo del tope mensual). Por eso:
-  1) USAR_SOLO_PRIORITARIAS quedó en False — se revisan las 13 ligas
+  1) USAR_SOLO_PRIORITARIAS quedó en False — se revisan las 25 ligas
      completas (LIGAS_TODAS) en cada corrida.
-  2) El cron en monitor_partidos.yml se acortó a cada 15-30 minutos.
+  2) El cron en monitor_partidos.yml corre cada 15-30 minutos.
   3) El freno de seguridad por créditos bajos (COLCHON_MINIMO_CREDITOS)
-     se deja activo igual, como respaldo ante cualquier imprevisto
-     (por ejemplo, si se sube el número de ligas o mercados más
-     adelante).
+     se deja activo igual, como respaldo ante cualquier imprevisto.
+
+La lista de 25 ligas (LIGAS_TODAS más abajo) se verificó contra el
+endpoint real /v4/sports de The Odds API (script list_sports.py) antes
+de agregarla, para confirmar que cada sport_key existe de verdad.
 
 Si algún mes se agotan los créditos antes de tiempo, el script se
 detiene solo (ver ejecutar_ronda) y no genera errores ni cobros
@@ -59,11 +61,13 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-# Las 13 ligas que The Odds API SÍ cubre, de las que definimos como
-# permitidas. OJO: Liga BetPlay (Colombia) y Primera División de
-# Uruguay NO aparecen en el catálogo de este proveedor gratuito — no
-# es un descarte nuestro, es que esta fuente de datos no las tiene.
-# Si se consigue otra fuente que sí las cubra, se agregan aparte.
+# Las 25 mejores ligas de fútbol para el proyecto, elegidas por liquidez
+# (muchas casas de apuestas cubriéndolas -> promedio de cuotas confiable),
+# volumen de partidos por semana y profundidad de mercados. Verificadas
+# una por una contra /v4/sports antes de agregarlas (ver list_sports.py).
+# OJO: Liga BetPlay (Colombia) y Primera División de Uruguay NO aparecen
+# en el catálogo de este proveedor — no es un descarte nuestro, es que
+# esta fuente de datos no las tiene.
 LIGAS_TODAS = [
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -78,12 +82,24 @@ LIGAS_TODAS = [
     "soccer_mexico_ligamx",
     "soccer_usa_mls",
     "soccer_chile_campeonato",
+    "soccer_netherlands_eredivisie",
+    "soccer_portugal_primeira_liga",
+    "soccer_turkey_super_league",
+    "soccer_efl_champ",
+    "soccer_saudi_arabia_pro_league",
+    "soccer_germany_bundesliga2",
+    "soccer_spain_segunda_division",
+    "soccer_belgium_first_div",
+    "soccer_austria_bundesliga",
+    "soccer_switzerland_superleague",
+    "soccer_denmark_superliga",
+    "soccer_conmebol_copa_libertadores",
 ]
 
 # Subconjunto reducido, útil solo si en algún momento se quiere volver
 # a limitar el consumo de créditos (por ejemplo, si se baja de plan).
 # Con el plan de pago activo, USAR_SOLO_PRIORITARIAS = False y se usan
-# las 13 ligas completas (LIGAS_TODAS).
+# las 25 ligas completas (LIGAS_TODAS).
 USAR_SOLO_PRIORITARIAS = False
 LIGAS_PRIORITARIAS = [
     "soccer_epl",
