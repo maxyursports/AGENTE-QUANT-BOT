@@ -3,30 +3,37 @@ Bot de Valor Pre-Partido -- Superagente Quant MAXYURSPORTS
 ============================================================
 Segundo proceso permanente del sistema (distinto del bot de cobertura
 en vivo de telegram_alert_bot.py). Este corre ANTES de que empiecen los
-partidos y busca:
+partidos y busca apuestas de valor EJECUTABLES EN 1XBET, que es la
+unica casa que usa el usuario.
 
-  1. Apuestas de valor por comparacion contra el mercado (metodo
-     "cuota justa" via devig, igual al que usamos manualmente el
-     29-ago-2026 -- puntos 17 de la lista de 40 ideas: Closing Line
-     Value / comparacion contra consenso de mercado).
-  2. Arbitraje entre casas cuando existe (punto 16).
-  3. Tamano de apuesta sugerido con Kelly fraccionado 0.10, tope 3%
-     (punto 24 -- integra el protocolo del Excel directamente en el bot).
-  4. Guarda cada consulta en un historial de cuotas (estado/historial_cuotas.jsonl)
-     para poder medir despues Closing Line Value real y detectar
-     "steam moves" (puntos 4 y 18).
+AJUSTE 2026-08-29 (rediseno completo tras confirmar que el usuario solo
+opera en 1xBet):
+  - Se elimina por completo la deteccion de arbitraje entre casas: el
+    arbitraje solo funciona si se puede apostar en varias casas al
+    mismo tiempo, y aqui no aplica.
+  - "Mejor cuota entre casas" ya no tiene sentido: ahora se usa
+    EXCLUSIVAMENTE la cuota que ofrece 1xBet. Si 1xBet no cubre un
+    partido, se salta sin mas analisis.
+  - La probabilidad "justa" de referencia se calcula con las OTRAS
+    casas (mediana, sin incluir a 1xBet) -- esto es un leave-one-out
+    real: la cuota que se esta evaluando (la de 1xBet) nunca contamina
+    su propio punto de comparacion. Es la correccion tecnica correcta
+    que ya habiamos identificado como pendiente en el CHANGELOG.
+  - Se redujo la consulta de regiones de la API de "eu,uk,us" a solo
+    "eu" (donde aparece 1xBet) -- esto reduce el consumo de creditos
+    de The Odds API, ya que no tiene sentido pagar por datos de
+    regiones/casas que el usuario nunca va a usar.
 
-LIMITACION HONESTA: el metodo de "cuota justa" de este script compara
-casas de apuestas ENTRE SI (asume que el consenso de mercado es
-eficiente y busca la casa que se desvia). NO es lo mismo que tener una
-probabilidad propia basada en un modelo estadistico (Elo, xG, forma,
-lesiones -- ver elo_model.py). Es una estrategia valida y realmente
-usada por apostadores cuantitativos, pero el "edge" que encuentra es
-mas pequeno y mas raro que el que daria un modelo propio bien
-entrenado y validado. Cuando elo_model.py tenga historial suficiente
-(ver resultados_historicos.csv), este script se puede extender para
-usar tambien la probabilidad del modelo Elo como fuente adicional de
-comparacion.
+METODO: sigue siendo comparacion contra consenso de mercado (devig),
+NO un modelo estadistico propio (ver elo_model.py para eso). Esta
+version es mas estricta que la anterior porque el punto de referencia
+(las otras casas) nunca incluye la cuota que se esta evaluando.
+
+LIMITACION HONESTA: si muy pocas casas ademas de 1xBet cubren un
+partido (por ejemplo solo 1 o 2), la "mediana" de referencia es poco
+confiable estadisticamente. El bot exige un minimo de 3 casas de
+referencia (ademas de 1xBet) antes de evaluar un partido -- ver
+MINIMO_CASAS_REFERENCIA.
 
 Variables de entorno requeridas (las mismas que ya usa el bot de
 cobertura en vivo):
@@ -34,8 +41,7 @@ cobertura en vivo):
     TELEGRAM_CHAT_ID
     ODDS_API_KEY
 
-Se ejecuta via GitHub Actions (.github/workflows/valor_prepartido.yml),
-programado para correr unas horas antes de cada tanda de partidos.
+Se ejecuta via GitHub Actions (.github/workflows/valor_prepartido.yml).
 """
 
 import json
@@ -51,10 +57,12 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
-# Mismas 25 ligas que ya usa el bot de cobertura en vivo (punto 1 de
-# las 40 ideas: ya estamos usando el catalogo amplio que el plan pago
-# permite). Se puede ampliar a otros deportes (punto 39: tenis, etc.)
-# agregando sus sport_key aqui, verificados primero contra /v4/sports.
+# La unica casa que usa el usuario. Todo el analisis gira en torno a
+# esta casa -- no tiene sentido para el usuario que el bot le muestre
+# valor en una casa donde no tiene cuenta.
+CASA_UNICA = "1xBet"
+
+# Mismas 25 ligas que ya usa el bot de cobertura en vivo.
 LIGAS_A_REVISAR = [
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -86,29 +94,18 @@ LIGAS_A_REVISAR = [
 # Ventana hacia adelante en la que buscamos partidos (horas).
 VENTANA_HORAS = 6
 
-# Umbral minimo de EV (contra la cuota justa de mercado) para
-# considerar que algo es una posible senal de valor, no solo ruido.
-#
-# CORRECCION 2026-08-29 (tras la primera corrida real): comparar la
-# MEJOR cuota (el maximo entre N casas) contra el promedio del mercado
-# tiene un sesgo estadistico conocido -- el maximo de varias
-# cotizaciones con ruido casi siempre queda por encima del promedio,
-# aunque el mercado sea eficiente. Con 5 casas, la primera corrida real
-# encontro 23 "hallazgos" de valor y 5 de arbitraje, una cantidad
-# sospechosamente alta comparada con el analisis manual del mismo dia
-# (que no encontro nada con un metodo mas estricto). Se sube el umbral
-# de 2% a 5% como correccion conservadora inmediata, y se deja
-# pendiente en el CHANGELOG una correccion mas rigurosa (comparar
-# contra la mediana o excluir la propia casa outlier del calculo del
-# promedio, en vez de comparar el maximo contra un promedio que la
-# incluye).
+# Umbral minimo de EV (cuota de 1xBet vs. mediana de las OTRAS casas)
+# para considerar que algo es una posible senal de valor. Se mantiene
+# en 5% (conservador) porque, aunque el metodo leave-one-out corrige
+# el sesgo de seleccion mas grave, sigue siendo comparacion entre
+# casas y no un modelo propio -- ver limitacion honesta al inicio.
 UMBRAL_EV_MINIMO = 0.05
 
-# Umbral de arbitraje: si la suma de 1/mejor_cuota de cada resultado
-# es menor a este numero, existe una combinacion que gana siempre
-# (arbitraje real, punto 16). Se deja un margen de seguridad de 0.5%
-# sobre 1.0 por errores de redondeo/timing entre casas.
-UMBRAL_ARBITRAJE = 0.995
+# Minimo de casas de REFERENCIA (sin contar a 1xBet) necesarias para
+# calcular una mediana medianamente confiable. Menos que esto y el
+# partido se salta -- no vale la pena evaluar valor contra 1 o 2
+# casas de referencia.
+MINIMO_CASAS_REFERENCIA = 3
 
 # --- Kelly fraccionado (protocolo existente del Excel, punto 24) ---
 KELLY_FRACCION = 0.10
@@ -139,7 +136,10 @@ def obtener_cuotas(sport_key: str):
             url,
             params={
                 "apiKey": ODDS_API_KEY,
-                "regions": "eu,uk,us",
+                # Solo region "eu" -- ahi aparece 1xBet, y no pagamos
+                # creditos de mas por regiones (uk, us) que el usuario
+                # nunca va a poder usar.
+                "regions": "eu",
                 "markets": "h2h",
                 "oddsFormat": "decimal",
             },
@@ -153,7 +153,7 @@ def obtener_cuotas(sport_key: str):
 
 
 # ----------------------------------------------------------------------
-# ANALISIS: cuota justa (devig), valor, arbitraje
+# ANALISIS: cuota de 1xBet vs. mediana de las OTRAS casas (leave-one-out)
 # ----------------------------------------------------------------------
 
 def cuotas_por_resultado(partido: dict) -> dict:
@@ -169,64 +169,44 @@ def cuotas_por_resultado(partido: dict) -> dict:
     return tabla
 
 
-def cuota_justa_por_devig(tabla_cuotas: dict) -> dict:
-    """
-    Usa la MEDIANA (no el promedio) de la cuota entre casas por
-    resultado y le quita el margen (overround) proporcionalmente,
-    dejando una probabilidad "justa" de mercado. Metodo de devig
-    multiplicativo sobre mediana.
+def cuotas_1xbet(tabla_cuotas: dict) -> dict:
+    """{resultado: cuota} solo de 1xBet, o {} si no cubre el partido."""
+    resultado = {}
+    for r, precios in tabla_cuotas.items():
+        if CASA_UNICA in precios:
+            resultado[r] = precios[CASA_UNICA]
+    return resultado
 
-    CORRECCION 2026-08-29: se cambio de promedio a mediana a proposito.
-    Comparar la MEJOR cuota (el maximo) contra un promedio que incluye
-    esa misma cuota outlier infla artificialmente el EV calculado (la
-    cuota outlier "contamina" su propio punto de referencia y ademas
-    el maximo de varias muestras con ruido casi siempre queda por
-    encima del promedio, aunque el mercado sea eficiente). La mediana
-    es mucho mas robusta a un solo outlier y da una estimacion mas
-    honesta de "cuanto piensa el mercado en su conjunto", separada de
-    la casa que se esta evaluando como posible valor.
+
+def cuota_justa_leave_one_out(tabla_cuotas: dict) -> tuple[dict, int]:
     """
-    mediana = {}
+    Calcula la probabilidad "justa" de referencia usando la MEDIANA de
+    todas las casas EXCEPTO 1xBet (leave-one-out real: la cuota que
+    estamos evaluando nunca entra en su propio punto de comparacion).
+
+    Devuelve (justa, num_casas_referencia_minimo_entre_resultados).
+    """
+    medianas = {}
+    minimo_casas = None
     for resultado, precios in tabla_cuotas.items():
-        valores = sorted(precios.values())
-        n = len(valores)
+        otras = [precio for casa, precio in precios.items() if casa != CASA_UNICA]
+        n = len(otras)
+        minimo_casas = n if minimo_casas is None else min(minimo_casas, n)
+        if n == 0:
+            continue
+        otras.sort()
         if n % 2 == 1:
-            mediana[resultado] = valores[n // 2]
+            medianas[resultado] = otras[n // 2]
         else:
-            mediana[resultado] = (valores[n // 2 - 1] + valores[n // 2]) / 2
-    implicita = {r: 1 / c for r, c in mediana.items()}
+            medianas[resultado] = (otras[n // 2 - 1] + otras[n // 2]) / 2
+
+    if not medianas:
+        return {}, (minimo_casas or 0)
+
+    implicita = {r: 1 / c for r, c in medianas.items()}
     overround = sum(implicita.values())
     justa = {r: implicita[r] / overround for r in implicita}
-    return justa, overround
-
-
-def mejor_cuota_por_resultado(tabla_cuotas: dict) -> dict:
-    mejor = {}
-    for resultado, precios in tabla_cuotas.items():
-        casa, precio = max(precios.items(), key=lambda kv: kv[1])
-        mejor[resultado] = (precio, casa)
-    return mejor
-
-
-def detectar_arbitraje(mejor: dict) -> dict | None:
-    """
-    Si la suma de 1/mejor_cuota de TODOS los resultados es menor a 1
-    (menos el margen de seguridad), hay arbitraje real: apostando en
-    proporcion inversa a cada cuota se gana sin importar el resultado.
-    """
-    suma_inversa = sum(1 / precio for precio, _casa in mejor.values())
-    if suma_inversa >= UMBRAL_ARBITRAJE:
-        return None
-    ganancia_garantizada = (1 / suma_inversa) - 1
-    stakes = {
-        resultado: round((1 / precio) / suma_inversa, 4)
-        for resultado, (precio, _casa) in mejor.items()
-    }
-    return {
-        "ganancia_garantizada_pct": round(ganancia_garantizada * 100, 2),
-        "reparto_stake": stakes,
-        "cuotas_usadas": {r: v for r, v in mejor.items()},
-    }
+    return justa, (minimo_casas or 0)
 
 
 def kelly_fraccionado(prob: float, cuota: float) -> float:
@@ -282,36 +262,20 @@ def enviar_telegram(mensaje: str) -> bool:
 
 
 def formatear_hallazgo_valor(partido_nombre: str, liga: str, inicio: str, resultado: str,
-                              prob_justa: float, cuota: float, casa: str, ev: float) -> str:
-    stake = kelly_fraccionado(prob_justa, cuota)
+                              prob_justa: float, cuota_1xbet: float, num_casas_ref: int, ev: float) -> str:
+    stake = kelly_fraccionado(prob_justa, cuota_1xbet)
     return (
-        f"📈 <b>Posible valor pre-partido</b>\n"
+        f"📈 <b>Posible valor en 1xBet</b>\n"
         f"{partido_nombre} ({liga})\n"
         f"Inicio: {inicio}\n\n"
         f"Resultado: <b>{resultado}</b>\n"
-        f"Cuota: {cuota} en {casa}\n"
-        f"Probabilidad justa de mercado (devig, no es modelo propio): {prob_justa*100:.1f}%\n"
-        f"EV estimado vs. consenso: {ev*100:+.2f}%\n"
+        f"Cuota en 1xBet: {cuota_1xbet}\n"
+        f"Probabilidad justa (mediana de {num_casas_ref} otras casas, sin incluir 1xBet): {prob_justa*100:.1f}%\n"
+        f"EV estimado: {ev*100:+.2f}%\n"
         f"Stake sugerido (Kelly 0.10, tope 3%): {stake*100:.2f}% de banca\n\n"
-        f"⚠️ Este calculo compara casas entre si, NO usa un modelo "
-        f"estadistico propio todavia. Revisar manualmente antes de apostar."
-    )
-
-
-def formatear_hallazgo_arbitraje(partido_nombre: str, liga: str, inicio: str, arb: dict) -> str:
-    detalle = "\n".join(
-        f"  {resultado}: {cuota} en {casa} -> stake {arb['reparto_stake'][resultado]*100:.1f}%"
-        for resultado, (cuota, casa) in arb["cuotas_usadas"].items()
-    )
-    return (
-        f"🟢 <b>Posible arbitraje entre casas</b>\n"
-        f"{partido_nombre} ({liga})\n"
-        f"Inicio: {inicio}\n\n"
-        f"Ganancia garantizada estimada: {arb['ganancia_garantizada_pct']:.2f}%\n"
-        f"{detalle}\n\n"
-        f"⚠️ Verificar manualmente en cada casa antes de apostar: cuotas "
-        f"cambian rapido y algunas casas limitan cuentas que arbitran "
-        f"seguido. Revisar tambien limites de apuesta minima/maxima."
+        f"⚠️ Esto compara la cuota de 1xBet contra el resto del mercado, "
+        f"NO usa un modelo estadistico propio todavia. Verifica el precio "
+        f"actual en la app de 1xBet antes de apostar -- las cuotas cambian rapido."
     )
 
 
@@ -323,7 +287,8 @@ def ejecutar_ronda() -> None:
     ahora = datetime.now(timezone.utc)
     limite = ahora + timedelta(hours=VENTANA_HORAS)
     hallazgos_valor = []
-    hallazgos_arbitraje = []
+    partidos_sin_1xbet = 0
+    partidos_sin_referencia_suficiente = 0
 
     for liga in LIGAS_A_REVISAR:
         partidos, restantes = obtener_cuotas(liga)
@@ -342,42 +307,41 @@ def ejecutar_ronda() -> None:
             if len(tabla) < 2:
                 continue
 
+            propias = cuotas_1xbet(tabla)
+            if not propias:
+                partidos_sin_1xbet += 1
+                continue  # 1xBet no cubre este partido -- no se puede ejecutar
+
             nombre_partido = f"{partido['home_team']} vs {partido['away_team']}"
             guardar_en_historial(partido["id"], nombre_partido, liga, "pre_partido", tabla)
 
-            justa, overround = cuota_justa_por_devig(tabla)
-            mejor = mejor_cuota_por_resultado(tabla)
+            justa, num_casas_ref = cuota_justa_leave_one_out(tabla)
+            if num_casas_ref < MINIMO_CASAS_REFERENCIA:
+                partidos_sin_referencia_suficiente += 1
+                continue
 
-            arb = detectar_arbitraje(mejor)
-            if arb:
-                hallazgos_arbitraje.append((nombre_partido, liga, inicio.isoformat(), arb))
-
-            for resultado, (cuota, casa) in mejor.items():
+            for resultado, cuota in propias.items():
                 prob = justa.get(resultado)
                 if prob is None:
                     continue
                 ev = prob * cuota - 1
                 if ev >= UMBRAL_EV_MINIMO:
                     hallazgos_valor.append(
-                        (nombre_partido, liga, inicio.isoformat(), resultado, prob, cuota, casa, ev)
+                        (nombre_partido, liga, inicio.isoformat(), resultado, prob, cuota, num_casas_ref, ev)
                     )
 
-    print(f"[INFO] Hallazgos de valor (EV >= {UMBRAL_EV_MINIMO*100:.0f}%): {len(hallazgos_valor)}")
-    print(f"[INFO] Hallazgos de arbitraje: {len(hallazgos_arbitraje)}")
+    print(f"[INFO] Hallazgos de valor en 1xBet (EV >= {UMBRAL_EV_MINIMO*100:.0f}%): {len(hallazgos_valor)}")
+    print(f"[INFO] Partidos saltados por no estar en 1xBet: {partidos_sin_1xbet}")
+    print(f"[INFO] Partidos saltados por pocas casas de referencia (<{MINIMO_CASAS_REFERENCIA}): {partidos_sin_referencia_suficiente}")
 
-    if not hallazgos_valor and not hallazgos_arbitraje:
-        print("[INFO] Ronda completada. No se encontro valor real ni arbitraje esta vez.")
+    if not hallazgos_valor:
+        print("[INFO] Ronda completada. No se encontro valor real en 1xBet esta vez.")
         return
 
-    for nombre, liga, inicio, resultado, prob, cuota, casa, ev in hallazgos_valor:
-        msg = formatear_hallazgo_valor(nombre, liga, inicio, resultado, prob, cuota, casa, ev)
+    for nombre, liga, inicio, resultado, prob, cuota, num_casas_ref, ev in hallazgos_valor:
+        msg = formatear_hallazgo_valor(nombre, liga, inicio, resultado, prob, cuota, num_casas_ref, ev)
         if enviar_telegram(msg):
             print(f"Alerta de valor enviada: {nombre} ({resultado})")
-
-    for nombre, liga, inicio, arb in hallazgos_arbitraje:
-        msg = formatear_hallazgo_arbitraje(nombre, liga, inicio, arb)
-        if enviar_telegram(msg):
-            print(f"Alerta de arbitraje enviada: {nombre}")
 
 
 if __name__ == "__main__":
