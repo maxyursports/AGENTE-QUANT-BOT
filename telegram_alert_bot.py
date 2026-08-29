@@ -2,9 +2,18 @@
 Bot de Alertas en Vivo — Superagente Quant MAXYURSPORTS
 =========================================================
 Revisa los partidos EN CURSO de las ligas permitidas, detecta cuándo el
-favorito (según la cuota promedio en vivo) va perdiendo o empatando, y
-calcula la cobertura exacta (hedge_calculator.py) antes de mandar la
-alerta a Telegram.
+favorito (según la cuota EN VIVO de 1xBet, la única casa que usa
+MAXYURSPORTS) va perdiendo o empatando, y calcula la cobertura exacta
+(hedge_calculator.py) antes de mandar la alerta a Telegram.
+
+AJUSTE 2026-08-29: el usuario solo opera en 1xBet. Antes este bot
+promediaba la cuota entre TODAS las casas que devuelve The Odds API,
+lo cual no sirve de nada si solo se puede apostar/cubrir en una sola
+casa — la cobertura tiene que calcularse con el precio real que 1xBet
+ofrece, no con un promedio de mercado que el usuario no puede tomar.
+Ahora el bot usa exclusivamente la cuota de 1xBet, y si 1xBet no cubre
+un partido lo salta directamente (no tiene sentido alertar algo que no
+se puede ejecutar).
 
 Corre solo, sin supervisión, vía GitHub Actions (ver
 .github/workflows/monitor_partidos.yml) — gratis, sin depender de que
@@ -217,19 +226,23 @@ def obtener_cuotas_actuales(sport_key: str):
     return {p["id"]: p for p in resp.json()}, restantes
 
 
-def promedio_cuotas_h2h(partido_odds: dict) -> dict:
-    """Promedia la cuota h2h entre todas las casas para no depender de
-    una sola. Devuelve {nombre_equipo_o_'Draw': cuota_promedio}."""
-    acumulado, conteo = {}, {}
+CASA_UNICA = "1xBet"
+
+
+def cuotas_h2h_de_una_casa(partido_odds: dict, casa: str = CASA_UNICA) -> dict:
+    """
+    Cuotas h2h SOLO de la casa indicada (por defecto 1xBet, la única
+    que usa el usuario). Devuelve {nombre_equipo_o_'Draw': cuota}, o
+    un dict vacío si esa casa no cubre este partido.
+    """
     for bookmaker in partido_odds.get("bookmakers", []):
+        if bookmaker.get("title") != casa:
+            continue
         for market in bookmaker.get("markets", []):
             if market.get("key") != "h2h":
                 continue
-            for outcome in market.get("outcomes", []):
-                nombre, precio = outcome["name"], outcome["price"]
-                acumulado[nombre] = acumulado.get(nombre, 0) + precio
-                conteo[nombre] = conteo.get(nombre, 0) + 1
-    return {n: acumulado[n] / conteo[n] for n in acumulado}
+            return {o["name"]: o["price"] for o in market.get("outcomes", [])}
+    return {}
 
 
 def minutos_transcurridos(commence_time_iso: str) -> float:
@@ -254,7 +267,10 @@ def evaluar_partido(marcador: dict, cuotas_por_id: dict):
     if minuto < MINUTO_MINIMO_ALERTA or minuto > MINUTO_MAXIMO_ALERTA:
         return None
 
-    cuotas = promedio_cuotas_h2h(partido_odds)
+    cuotas = cuotas_h2h_de_una_casa(partido_odds)
+    if not cuotas:
+        return None  # 1xBet no cubre este partido -- no se puede ejecutar, se salta
+
     home, away = marcador["home_team"], marcador["away_team"]
     equipos_sin_empate = {k: v for k, v in cuotas.items() if k in (home, away)}
     if len(equipos_sin_empate) < 2:
@@ -309,16 +325,15 @@ def formatear_alerta(info: dict) -> str:
         f"⚠️ <b>Favorito complicado</b>\n"
         f"{info['partido']}\n"
         f"Minuto aprox. {info['minuto_aprox']} — Marcador {info['marcador']}\n\n"
-        f"{info['favorito']} era favorito (cuota ~{info['cuota_favorito_ahora']}) "
+        f"{info['favorito']} era favorito (cuota ~{info['cuota_favorito_ahora']} en 1xBet) "
         f"y no está ganando ahora mismo.\n"
-        f"Cuota contraria en vivo: {info['cuota_contraria']}\n\n"
+        f"Cuota contraria en vivo (1xBet): {info['cuota_contraria']}\n\n"
         f"Por cada 1 unidad apostada al favorito antes del partido:\n"
         f"• Cobertura ganancia igual: {c.stake_cobertura_ganancia_igual:.2f} u. "
         f"→ ganancia garantizada {c.ganancia_garantizada:.2f} u.\n"
         f"• Cobertura solo recuperar: {c.stake_cobertura_solo_recuperar:.2f} u.\n\n"
-        f"Esto es un cálculo matemático de cobertura, no una confirmación de "
-        f"valor real — la cuota promedio puede diferir de la de tu casa. "
-        f"Confírmalo con el agente antes de apostar."
+        f"Cuotas tomadas directamente de 1xBet. Aun asi, las cuotas cambian "
+        f"rapido -- verifica el precio actual en la app antes de apostar."
     )
 
 
