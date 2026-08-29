@@ -10,38 +10,34 @@ Corre solo, sin supervisión, vía GitHub Actions (ver
 .github/workflows/monitor_partidos.yml) — gratis, sin depender de que
 tu computador esté prendido ni de una conversación activa.
 
-FUENTE DE DATOS: The Odds API (https://the-odds-api.com), plan gratuito.
+FUENTE DE DATOS: The Odds API (https://the-odds-api.com), plan de pago
+"20K" (USD $30/mes, 20,000 créditos/mes).
 
 =====================================================================
-IMPORTANTE — LÍMITE REAL DEL PLAN GRATUITO (léelo antes de tocar nada)
+NOTA — PRESUPUESTO DE CRÉDITOS (plan de pago activo desde ago-2026)
 =====================================================================
-El plan gratuito da 500 "créditos" AL MES, no al día. Cada consulta de
-marcadores (/scores) cuesta 1 crédito por liga, y cada consulta de
-cuotas (/odds) cuesta (mercados x regiones) créditos.
+Con 20,000 créditos/mes hay margen de sobra para revisar las 13 ligas
+del catálogo en cada corrida, incluso con el cron corriendo cada
+15-30 minutos (revisar las 13 ligas cuesta ~13-26 créditos por
+corrida; a una corrida cada 15 min eso son ~1,200-2,500 créditos/día
+en el peor caso, muy por debajo del tope mensual). Por eso:
+  1) USAR_SOLO_PRIORITARIAS quedó en False — se revisan las 13 ligas
+     completas (LIGAS_TODAS) en cada corrida.
+  2) El cron en monitor_partidos.yml se acortó a cada 15-30 minutos.
+  3) El freno de seguridad por créditos bajos (COLCHON_MINIMO_CREDITOS)
+     se deja activo igual, como respaldo ante cualquier imprevisto
+     (por ejemplo, si se sube el número de ligas o mercados más
+     adelante).
 
-Revisar las 13 ligas permitidas UNA sola vez ya cuesta ~13 créditos.
-Si esto corriera cada 15 minutos, se acabarían los 500 créditos del
-mes completo en menos de un día. Por eso, mientras estemos en el plan
-gratuito, este script:
-  1) Solo revisa un subconjunto reducido de ligas prioritarias por
-     corrida (ver LIGAS_A_REVISAR más abajo), no las 13 completas.
-  2) Se ejecuta pocas veces al día (ver el cron en monitor_partidos.yml,
-     por defecto cada 8 horas) — NO es monitoreo minuto a minuto.
-  3) Se detiene solo si detecta que quedan pocos créditos disponibles
-     ese mes (usando los encabezados que devuelve la API).
-
-Esto es una limitación real del plan gratuito, no un error de código.
-Si en algún momento se quiere cobertura más completa y frecuente (las
-13 ligas, cada 15-30 minutos), hay que pasar al plan de pago de
-The Odds API (USD $30/mes, 20,000 créditos) — eso sí se financia con
-las ganancias de las apuestas, como se acordó, y solo se activa si el
-usuario lo decide explícitamente.
+Si algún mes se agotan los créditos antes de tiempo, el script se
+detiene solo (ver ejecutar_ronda) y no genera errores ni cobros
+adicionales — el plan no hace auto-upgrade a mayor consumo.
 =====================================================================
 
 Variables de entorno requeridas:
     TELEGRAM_BOT_TOKEN   -> el token que dio @BotFather
     TELEGRAM_CHAT_ID     -> el chat id del usuario
-    ODDS_API_KEY         -> la llave gratuita de the-odds-api.com
+    ODDS_API_KEY         -> la llave de the-odds-api.com (plan de pago 20K)
 """
 
 import json
@@ -84,11 +80,11 @@ LIGAS_TODAS = [
     "soccer_chile_campeonato",
 ]
 
-# Subconjunto que SÍ revisamos mientras estemos en el plan gratuito
-# (ver la explicación de créditos arriba). Cambia esta lista si quieres
-# priorizar otras ligas -- el orden importa poco, pero mientras más
-# ligas pongas aquí, menos veces al día alcanza el presupuesto gratis.
-USAR_SOLO_PRIORITARIAS = True
+# Subconjunto reducido, útil solo si en algún momento se quiere volver
+# a limitar el consumo de créditos (por ejemplo, si se baja de plan).
+# Con el plan de pago activo, USAR_SOLO_PRIORITARIAS = False y se usan
+# las 13 ligas completas (LIGAS_TODAS).
+USAR_SOLO_PRIORITARIAS = False
 LIGAS_PRIORITARIAS = [
     "soccer_epl",
     "soccer_spain_la_liga",
