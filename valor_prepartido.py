@@ -88,10 +88,21 @@ VENTANA_HORAS = 6
 
 # Umbral minimo de EV (contra la cuota justa de mercado) para
 # considerar que algo es una posible senal de valor, no solo ruido.
-# 2% es conservador a proposito: con el margen tipico de casas (7-11%
-# de overround) un EV menor suele ser ruido de redondeo entre casas,
-# no una senal real.
-UMBRAL_EV_MINIMO = 0.02
+#
+# CORRECCION 2026-08-29 (tras la primera corrida real): comparar la
+# MEJOR cuota (el maximo entre N casas) contra el promedio del mercado
+# tiene un sesgo estadistico conocido -- el maximo de varias
+# cotizaciones con ruido casi siempre queda por encima del promedio,
+# aunque el mercado sea eficiente. Con 5 casas, la primera corrida real
+# encontro 23 "hallazgos" de valor y 5 de arbitraje, una cantidad
+# sospechosamente alta comparada con el analisis manual del mismo dia
+# (que no encontro nada con un metodo mas estricto). Se sube el umbral
+# de 2% a 5% como correccion conservadora inmediata, y se deja
+# pendiente en el CHANGELOG una correccion mas rigurosa (comparar
+# contra la mediana o excluir la propia casa outlier del calculo del
+# promedio, en vez de comparar el maximo contra un promedio que la
+# incluye).
+UMBRAL_EV_MINIMO = 0.05
 
 # Umbral de arbitraje: si la suma de 1/mejor_cuota de cada resultado
 # es menor a este numero, existe una combinacion que gana siempre
@@ -160,14 +171,30 @@ def cuotas_por_resultado(partido: dict) -> dict:
 
 def cuota_justa_por_devig(tabla_cuotas: dict) -> dict:
     """
-    Promedia la cuota entre casas por resultado y le quita el margen
-    (overround) proporcionalmente, dejando una probabilidad "justa" de
-    mercado. Metodo estandar de devig multiplicativo.
+    Usa la MEDIANA (no el promedio) de la cuota entre casas por
+    resultado y le quita el margen (overround) proporcionalmente,
+    dejando una probabilidad "justa" de mercado. Metodo de devig
+    multiplicativo sobre mediana.
+
+    CORRECCION 2026-08-29: se cambio de promedio a mediana a proposito.
+    Comparar la MEJOR cuota (el maximo) contra un promedio que incluye
+    esa misma cuota outlier infla artificialmente el EV calculado (la
+    cuota outlier "contamina" su propio punto de referencia y ademas
+    el maximo de varias muestras con ruido casi siempre queda por
+    encima del promedio, aunque el mercado sea eficiente). La mediana
+    es mucho mas robusta a un solo outlier y da una estimacion mas
+    honesta de "cuanto piensa el mercado en su conjunto", separada de
+    la casa que se esta evaluando como posible valor.
     """
-    promedio = {}
+    mediana = {}
     for resultado, precios in tabla_cuotas.items():
-        promedio[resultado] = sum(precios.values()) / len(precios)
-    implicita = {r: 1 / c for r, c in promedio.items()}
+        valores = sorted(precios.values())
+        n = len(valores)
+        if n % 2 == 1:
+            mediana[resultado] = valores[n // 2]
+        else:
+            mediana[resultado] = (valores[n // 2 - 1] + valores[n // 2]) / 2
+    implicita = {r: 1 / c for r, c in mediana.items()}
     overround = sum(implicita.values())
     justa = {r: implicita[r] / overround for r in implicita}
     return justa, overround
