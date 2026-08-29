@@ -1,0 +1,51 @@
+name: Valor pre-partido (Superagente Quant)
+
+# Corre unas horas antes de las principales tandas de partidos del
+# dia (America/Bogota = UTC-5). Los horarios en UTC de abajo cubren:
+#   - 09:00 UTC (04:00 Bogota) -> revisa partidos de la manana europea
+#   - 15:00 UTC (10:00 Bogota) -> revisa partidos de la tarde/noche Europa+Sudamerica
+#   - 20:00 UTC (15:00 Bogota) -> revisa partidos de la noche America
+# Ajustar estos horarios si el calendario de ligas cambia.
+on:
+  schedule:
+    - cron: "0 9 * * *"
+    - cron: "0 15 * * *"
+    - cron: "0 20 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  buscar-valor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar busqueda de valor pre-partido
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python valor_prepartido.py
+
+      - name: Guardar historial de cuotas
+        run: |
+          git config user.name "agente-quant-bot"
+          git config user.email "actions@github.com"
+          if [ -n "$(git status --porcelain estado/)" ]; then
+            git add estado/
+            git commit -m "Actualiza historial de cuotas pre-partido [skip ci]"
+            git push
+          else
+            echo "Sin cambios en el historial de cuotas."
+          fi
