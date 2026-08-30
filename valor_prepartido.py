@@ -3,37 +3,49 @@ Bot de Valor Pre-Partido -- Superagente Quant MAXYURSPORTS
 ============================================================
 Segundo proceso permanente del sistema (distinto del bot de cobertura
 en vivo de telegram_alert_bot.py). Este corre ANTES de que empiecen los
-partidos y busca apuestas de valor EJECUTABLES EN 1XBET, que es la
-unica casa que usa el usuario.
+partidos y busca apuestas EJECUTABLES EN 1XBET, que es la unica casa
+que usa el usuario.
 
-AJUSTE 2026-08-29 (rediseno completo tras confirmar que el usuario solo
-opera en 1xBet):
-  - Se elimina por completo la deteccion de arbitraje entre casas: el
-    arbitraje solo funciona si se puede apostar en varias casas al
-    mismo tiempo, y aqui no aplica.
-  - "Mejor cuota entre casas" ya no tiene sentido: ahora se usa
-    EXCLUSIVAMENTE la cuota que ofrece 1xBet. Si 1xBet no cubre un
-    partido, se salta sin mas analisis.
-  - La probabilidad "justa" de referencia se calcula con las OTRAS
-    casas (mediana, sin incluir a 1xBet) -- esto es un leave-one-out
-    real: la cuota que se esta evaluando (la de 1xBet) nunca contamina
-    su propio punto de comparacion. Es la correccion tecnica correcta
-    que ya habiamos identificado como pendiente en el CHANGELOG.
-  - Se redujo la consulta de regiones de la API de "eu,uk,us" a solo
-    "eu" (donde aparece 1xBet) -- esto reduce el consumo de creditos
-    de The Odds API, ya que no tiene sentido pagar por datos de
-    regiones/casas que el usuario nunca va a usar.
+AJUSTE 2026-08-30 (pedido explicito del usuario, cambio de metodo):
+  El usuario fue explicito: "el hecho de que compares las cuotas con
+  otras casas no me interesa x b, uno x b siempre maneja unas buenas
+  cuotas... omite lo de comparar las casas de apuestas con un x bet,
+  lo que la cuota que de un x bet, esa sera la que juguemos."
 
-METODO: sigue siendo comparacion contra consenso de mercado (devig),
-NO un modelo estadistico propio (ver elo_model.py para eso). Esta
-version es mas estricta que la anterior porque el punto de referencia
-(las otras casas) nunca incluye la cuota que se esta evaluando.
+  Esto significa que se ELIMINA POR COMPLETO el metodo anterior
+  (leave-one-out contra la mediana de otras casas). Ya NO se compara
+  a 1xBet contra nadie. Los cambios concretos:
 
-LIMITACION HONESTA: si muy pocas casas ademas de 1xBet cubren un
-partido (por ejemplo solo 1 o 2), la "mediana" de referencia es poco
-confiable estadisticamente. El bot exige un minimo de 3 casas de
-referencia (ademas de 1xBet) antes de evaluar un partido -- ver
-MINIMO_CASAS_REFERENCIA.
+    1. La probabilidad "justa" de un resultado ahora se calcula
+       EXCLUSIVAMENTE con las cuotas que ofrece 1xBet para ese mismo
+       partido (implicita = 1/cuota, luego devigged dividiendo por la
+       suma de todas las implicitas de 1xBet en ese partido -- esto
+       quita el margen/overround propio de la casa, pero NO involucra
+       a ninguna otra casa de apuestas).
+    2. Se elimina MINIMO_CASAS_REFERENCIA y toda la logica de
+       "casas de referencia" -- ya no aplica, porque no hay
+       comparacion con otras casas.
+    3. UMBRAL_PROBABILIDAD_MINIMA baja de 0.65 a 0.55, pedido
+       explicito del usuario ("bajale a un cincuenta y cinco por
+       ciento a ver que nos vota").
+    4. El usuario pidio una respuesta directa: "necesito es que me
+       digas cual es la apuesta que yo debo hacer" -- no solo una
+       lista filtrada. Por eso, ademas de listar (si hay mas de una)
+       todas las que pasan el filtro, el bot ahora identifica y marca
+       explicitamente a LA MEJOR (mayor probabilidad) como la
+       recomendacion principal, y esa es la que se manda primero y de
+       forma mas prominente por Telegram.
+
+LIMITACION HONESTA QUE SIGUE VIGENTE: la probabilidad que calcula este
+bot sigue siendo la probabilidad IMPLICITA en las cuotas de 1xBet
+(cuanto cree el mercado/la casa que un resultado va a pasar), NO una
+probabilidad calculada con datos reales de futbol (lesionados,
+alineaciones, forma, remates al arco, etc.). Esa fuente de datos aun
+NO esta conectada al sistema -- requiere contratar una API paga (ej.
+API-Football, ver CHANGELOG 2026-08-30). Mientras esa fuente no este
+conectada, "probabilidad" en este bot quiere decir "que tan favorito
+es este resultado segun la propia casa 1xBet", no un analisis de
+lesionados/alineaciones/jugadores.
 
 Variables de entorno requeridas (las mismas que ya usa el bot de
 cobertura en vivo):
@@ -62,7 +74,8 @@ ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 # valor en una casa donde no tiene cuenta.
 CASA_UNICA = "1xBet"
 
-# Mismas 25 ligas que ya usa el bot de cobertura en vivo.
+# Mismas ligas que ya usa el bot de cobertura en vivo, mas la
+# ampliacion del 2026-08-30.
 LIGAS_A_REVISAR = [
     "soccer_epl",
     "soccer_spain_la_liga",
@@ -89,12 +102,6 @@ LIGAS_A_REVISAR = [
     "soccer_switzerland_superleague",
     "soccer_denmark_superliga",
     "soccer_conmebol_copa_libertadores",
-    # AJUSTE 2026-08-30 (ampliacion de cobertura, pedido explicito del
-    # usuario): mientras se evalua conectar una fuente de datos de
-    # futbol real (lesionados, alineaciones, estadisticas de jugador),
-    # se amplia el numero de ligas/partidos revisados para tener mas
-    # oportunidades de encontrar un favorito claro dentro de la ventana
-    # de tiempo, sin bajar el umbral de probabilidad minima.
     "soccer_spl",                      # Escocia
     "soccer_norway_eliteserien",
     "soccer_sweden_allsvenskan",
@@ -110,45 +117,11 @@ LIGAS_A_REVISAR = [
 # Ventana hacia adelante en la que buscamos partidos (horas).
 VENTANA_HORAS = 6
 
-# AJUSTE 2026-08-30 (filtro hibrido, pedido explicito del usuario):
-# hasta ahora el bot ordenaba todo por EV (valor matematico), lo cual
-# permitia que un Empate a cuota 4.64 con 22.6% de probabilidad real
-# pasara el filtro solo por tener EV positivo -- matematicamente
-# correcto a largo plazo, pero la mayoria de las veces esa apuesta
-# INDIVIDUAL se pierde. El usuario fue explicito: quiere que DOMINE
-# la probabilidad de que la apuesta gane, sin importar que la cuota
-# sea baja (1.20, 1.35, lo que sea). Se cambia el diseno:
-#
-#   1. UMBRAL_PROBABILIDAD_MINIMA es ahora el filtro PRINCIPAL: si la
-#      probabilidad justa (consenso de mercado, leave-one-out) no
-#      llega a este minimo, la senal ni se considera, sin importar
-#      su EV.
-#   2. UMBRAL_EV_MINIMO baja a un piso casi minimo (no negativo): ya
-#      no exigimos "valor grande" como antes, solo que 1xBet no pague
-#      PEOR que el resto del mercado. Es un chequeo de sanidad, no el
-#      filtro principal.
-#
-# Con esto, las alertas van a ser mayoritariamente favoritos claros
-# (locales o visitantes fuertes) en vez de empates de cuota alta.
-UMBRAL_PROBABILIDAD_MINIMA = 0.65
-
-UMBRAL_EV_MINIMO = 0.0
-
-# Minimo de casas de REFERENCIA (sin contar a 1xBet) necesarias para
-# calcular una mediana medianamente confiable. Menos que esto y el
-# partido se salta -- no vale la pena evaluar valor contra 1 o 2
-# casas de referencia.
-#
-# AJUSTE 2026-08-29 (post-corrida real #3): con MINIMO_CASAS_REFERENCIA=3
-# la primera corrida real encontro 6 "hallazgos" de valor, los 6 en el
-# mismo mercado (Empate) y la misma liga (MLS) -- un patron sospechoso
-# de sesgo por poca muestra, no de valor real (ver CHANGELOG.md). MLS
-# tiene menos casas cotizando que las ligas europeas grandes, asi que
-# con solo 3 casas de referencia la mediana tiene mucha varianza,
-# especialmente en el mercado de empate (menos liquido). Se sube el
-# minimo a 5 para exigir una mediana mas estable antes de confiar en
-# una senal.
-MINIMO_CASAS_REFERENCIA = 5
+# AJUSTE 2026-08-30 (pedido explicito del usuario -- ver docstring del
+# modulo): probabilidad minima para considerar una senal. Bajado de
+# 0.65 a 0.55. Ya no se compara contra otras casas -- esta probabilidad
+# es la implicita en las propias cuotas de 1xBet, devigged.
+UMBRAL_PROBABILIDAD_MINIMA = 0.55
 
 # --- Kelly fraccionado (protocolo existente del Excel, punto 24) ---
 KELLY_FRACCION = 0.10
@@ -196,7 +169,9 @@ def obtener_cuotas(sport_key: str):
 
 
 # ----------------------------------------------------------------------
-# ANALISIS: cuota de 1xBet vs. mediana de las OTRAS casas (leave-one-out)
+# ANALISIS: probabilidad implicita en las PROPIAS cuotas de 1xBet
+# (sin comparar contra ninguna otra casa -- pedido explicito del
+# usuario, 2026-08-30)
 # ----------------------------------------------------------------------
 
 def cuotas_por_resultado(partido: dict) -> dict:
@@ -221,35 +196,25 @@ def cuotas_1xbet(tabla_cuotas: dict) -> dict:
     return resultado
 
 
-def cuota_justa_leave_one_out(tabla_cuotas: dict) -> tuple[dict, int]:
+def probabilidad_propia_1xbet(cuotas_propias: dict) -> dict:
     """
-    Calcula la probabilidad "justa" de referencia usando la MEDIANA de
-    todas las casas EXCEPTO 1xBet (leave-one-out real: la cuota que
-    estamos evaluando nunca entra en su propio punto de comparacion).
+    Probabilidad "justa" calculada UNICAMENTE con las cuotas que 1xBet
+    ofrece para este partido -- sin mirar ninguna otra casa.
 
-    Devuelve (justa, num_casas_referencia_minimo_entre_resultados).
+    Se toma la probabilidad implicita de cada resultado (1/cuota) y se
+    "devigea" dividiendo por la suma de todas las implicitas del
+    partido (el overround/margen propio de 1xBet). Esto no cambia el
+    orden relativo de favoritismo que ya tiene 1xBet -- solo lo
+    normaliza para que sume 100%, en vez de sumar el ~105-110% tipico
+    del margen de la casa.
     """
-    medianas = {}
-    minimo_casas = None
-    for resultado, precios in tabla_cuotas.items():
-        otras = [precio for casa, precio in precios.items() if casa != CASA_UNICA]
-        n = len(otras)
-        minimo_casas = n if minimo_casas is None else min(minimo_casas, n)
-        if n == 0:
-            continue
-        otras.sort()
-        if n % 2 == 1:
-            medianas[resultado] = otras[n // 2]
-        else:
-            medianas[resultado] = (otras[n // 2 - 1] + otras[n // 2]) / 2
-
-    if not medianas:
-        return {}, (minimo_casas or 0)
-
-    implicita = {r: 1 / c for r, c in medianas.items()}
+    if not cuotas_propias:
+        return {}
+    implicita = {r: 1 / c for r, c in cuotas_propias.items() if c and c > 0}
     overround = sum(implicita.values())
-    justa = {r: implicita[r] / overround for r in implicita}
-    return justa, (minimo_casas or 0)
+    if overround <= 0:
+        return {}
+    return {r: implicita[r] / overround for r in implicita}
 
 
 def kelly_fraccionado(prob: float, cuota: float) -> float:
@@ -304,22 +269,34 @@ def enviar_telegram(mensaje: str) -> bool:
     return True
 
 
-def formatear_hallazgo_valor(partido_nombre: str, liga: str, inicio: str, resultado: str,
-                              prob_justa: float, cuota_1xbet: float, num_casas_ref: int, ev: float) -> str:
-    stake = kelly_fraccionado(prob_justa, cuota_1xbet)
+def formatear_recomendacion_principal(partido_nombre: str, liga: str, inicio: str, resultado: str,
+                                       prob: float, cuota: float) -> str:
+    stake = kelly_fraccionado(prob, cuota)
     return (
-        f"🎯 <b>Alta probabilidad en 1xBet</b>\n"
+        f"✅ <b>LA APUESTA QUE DEBES HACER</b>\n"
         f"{partido_nombre} ({liga})\n"
         f"Inicio: {inicio}\n\n"
-        f"Resultado: <b>{resultado}</b>\n"
-        f"Probabilidad estimada de que gane (consenso de {num_casas_ref} casas, sin incluir 1xBet): <b>{prob_justa*100:.1f}%</b>\n"
-        f"Cuota en 1xBet: {cuota_1xbet}\n"
-        f"EV vs. mercado: {ev*100:+.2f}% (1xBet no paga peor que el consenso)\n"
+        f"Juega: <b>{resultado}</b>\n"
+        f"Cuota en 1xBet: <b>{cuota}</b>\n"
+        f"Probabilidad segun 1xBet: <b>{prob*100:.1f}%</b>\n"
         f"Stake sugerido (Kelly 0.10, tope 3%): {stake*100:.2f}% de banca\n\n"
-        f"⚠️ La probabilidad es una estimacion del consenso de mercado (leave-one-out), "
-        f"NO una garantia -- incluso con {prob_justa*100:.0f}% de probabilidad, "
-        f"aproximadamente {round((1-prob_justa)*100)} de cada 100 veces esta apuesta se pierde. "
-        f"Verifica el precio actual en la app de 1xBet antes de apostar -- las cuotas cambian rapido."
+        f"⚠️ Esta probabilidad viene de la propia cuota de 1xBet (no de "
+        f"analisis de lesionados/alineaciones -- eso todavia no esta "
+        f"conectado). Aun asi, aproximadamente {round((1-prob)*100)} de "
+        f"cada 100 veces esta apuesta se pierde. Verifica el precio "
+        f"actual en la app antes de apostar."
+    )
+
+
+def formatear_alternativa(partido_nombre: str, liga: str, inicio: str, resultado: str,
+                           prob: float, cuota: float) -> str:
+    stake = kelly_fraccionado(prob, cuota)
+    return (
+        f"➕ <b>Otra opcion con {prob*100:.1f}% de probabilidad</b>\n"
+        f"{partido_nombre} ({liga})\n"
+        f"Inicio: {inicio}\n"
+        f"Resultado: <b>{resultado}</b> | Cuota 1xBet: {cuota} | "
+        f"Stake sugerido: {stake*100:.2f}% de banca"
     )
 
 
@@ -330,9 +307,8 @@ def formatear_hallazgo_valor(partido_nombre: str, liga: str, inicio: str, result
 def ejecutar_ronda() -> None:
     ahora = datetime.now(timezone.utc)
     limite = ahora + timedelta(hours=VENTANA_HORAS)
-    hallazgos_valor = []
+    hallazgos = []
     partidos_sin_1xbet = 0
-    partidos_sin_referencia_suficiente = 0
 
     for liga in LIGAS_A_REVISAR:
         partidos, restantes = obtener_cuotas(liga)
@@ -359,55 +335,50 @@ def ejecutar_ronda() -> None:
             nombre_partido = f"{partido['home_team']} vs {partido['away_team']}"
             guardar_en_historial(partido["id"], nombre_partido, liga, "pre_partido", tabla)
 
-            justa, num_casas_ref = cuota_justa_leave_one_out(tabla)
-            if num_casas_ref < MINIMO_CASAS_REFERENCIA:
-                partidos_sin_referencia_suficiente += 1
-                continue
+            # AJUSTE 2026-08-30: probabilidad calculada SOLO con las
+            # cuotas propias de 1xBet -- ya no se compara contra otras
+            # casas (pedido explicito del usuario).
+            probs = probabilidad_propia_1xbet(propias)
 
             for resultado, cuota in propias.items():
-                prob = justa.get(resultado)
+                prob = probs.get(resultado)
                 if prob is None:
                     continue
-                # FILTRO PRINCIPAL: probabilidad primero. Si el consenso de
-                # mercado no le da a este resultado al menos
-                # UMBRAL_PROBABILIDAD_MINIMA de probabilidad, se descarta
-                # sin mirar el EV -- asi sea Empate a cuota jugosa o
-                # favorito a cuota 1.20. Esto es un pedido explicito del
-                # usuario (2026-08-30): prioriza que la apuesta tenga alta
-                # probabilidad de ganar, no que "pague bien" en el papel.
                 if prob < UMBRAL_PROBABILIDAD_MINIMA:
                     continue
-                ev = prob * cuota - 1
-                # FILTRO SECUNDARIO (chequeo de sanidad, no el criterio
-                # principal): que 1xBet no pague peor que el resto del
-                # mercado. UMBRAL_EV_MINIMO=0.0 solo evita mandarte un
-                # favorito donde 1xBet te da menos de lo que "deberia".
-                if ev >= UMBRAL_EV_MINIMO:
-                    print(
-                        f"[DETALLE] {nombre_partido} ({liga}) | resultado={resultado} | "
-                        f"cuota_1xbet={cuota} | prob_justa={prob*100:.1f}% | "
-                        f"num_casas_ref={num_casas_ref} | ev={ev*100:+.2f}%"
-                    )
-                    hallazgos_valor.append(
-                        (nombre_partido, liga, inicio.isoformat(), resultado, prob, cuota, num_casas_ref, ev)
-                    )
+                print(
+                    f"[DETALLE] {nombre_partido} ({liga}) | resultado={resultado} | "
+                    f"cuota_1xbet={cuota} | prob_1xbet={prob*100:.1f}%"
+                )
+                hallazgos.append(
+                    (nombre_partido, liga, inicio.isoformat(), resultado, prob, cuota)
+                )
 
-    # Se muestran primero las de MAYOR probabilidad -- ese es ahora el
-    # criterio de orden principal, no el EV.
-    hallazgos_valor.sort(key=lambda h: h[4], reverse=True)
+    # La de MAYOR probabilidad va primero -- esa es LA recomendacion.
+    hallazgos.sort(key=lambda h: h[4], reverse=True)
 
-    print(f"[INFO] Hallazgos con probabilidad >= {UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% en 1xBet: {len(hallazgos_valor)}")
+    print(f"[INFO] Hallazgos con probabilidad >= {UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% en 1xBet: {len(hallazgos)}")
     print(f"[INFO] Partidos saltados por no estar en 1xBet: {partidos_sin_1xbet}")
-    print(f"[INFO] Partidos saltados por pocas casas de referencia (<{MINIMO_CASAS_REFERENCIA}): {partidos_sin_referencia_suficiente}")
 
-    if not hallazgos_valor:
-        print("[INFO] Ronda completada. No se encontro valor real en 1xBet esta vez.")
+    if not hallazgos:
+        print("[INFO] Ronda completada. Ninguna cuota de 1xBet llega al "
+              f"{UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% de probabilidad implicita en esta ventana de tiempo.")
         return
 
-    for nombre, liga, inicio, resultado, prob, cuota, num_casas_ref, ev in hallazgos_valor:
-        msg = formatear_hallazgo_valor(nombre, liga, inicio, resultado, prob, cuota, num_casas_ref, ev)
+    # La primera (mayor probabilidad) se manda como LA recomendacion
+    # principal -- respuesta directa a "cual es la apuesta que debo
+    # hacer". El resto (si hay) se manda como alternativas, en orden.
+    principal = hallazgos[0]
+    msg_principal = formatear_recomendacion_principal(
+        principal[0], principal[1], principal[2], principal[3], principal[4], principal[5]
+    )
+    if enviar_telegram(msg_principal):
+        print(f"Recomendacion principal enviada: {principal[0]} ({principal[3]}) | prob={principal[4]*100:.1f}%")
+
+    for nombre, liga, inicio, resultado, prob, cuota in hallazgos[1:]:
+        msg = formatear_alternativa(nombre, liga, inicio, resultado, prob, cuota)
         if enviar_telegram(msg):
-            print(f"Alerta de valor enviada: {nombre} ({resultado})")
+            print(f"Alternativa enviada: {nombre} ({resultado}) | prob={prob*100:.1f}%")
 
 
 if __name__ == "__main__":
