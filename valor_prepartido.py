@@ -89,6 +89,22 @@ LIGAS_A_REVISAR = [
     "soccer_switzerland_superleague",
     "soccer_denmark_superliga",
     "soccer_conmebol_copa_libertadores",
+    # AJUSTE 2026-08-30 (ampliacion de cobertura, pedido explicito del
+    # usuario): mientras se evalua conectar una fuente de datos de
+    # futbol real (lesionados, alineaciones, estadisticas de jugador),
+    # se amplia el numero de ligas/partidos revisados para tener mas
+    # oportunidades de encontrar un favorito claro dentro de la ventana
+    # de tiempo, sin bajar el umbral de probabilidad minima.
+    "soccer_spl",                      # Escocia
+    "soccer_norway_eliteserien",
+    "soccer_sweden_allsvenskan",
+    "soccer_japan_j_league",
+    "soccer_korea_kleague1",
+    "soccer_england_league1",
+    "soccer_england_league2",
+    "soccer_france_ligue_two",
+    "soccer_italy_serie_b",
+    "soccer_brazil_serie_b",
 ]
 
 # Ventana hacia adelante en la que buscamos partidos (horas).
