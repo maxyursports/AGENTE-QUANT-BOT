@@ -105,7 +105,17 @@ UMBRAL_EV_MINIMO = 0.05
 # calcular una mediana medianamente confiable. Menos que esto y el
 # partido se salta -- no vale la pena evaluar valor contra 1 o 2
 # casas de referencia.
-MINIMO_CASAS_REFERENCIA = 3
+#
+# AJUSTE 2026-08-29 (post-corrida real #3): con MINIMO_CASAS_REFERENCIA=3
+# la primera corrida real encontro 6 "hallazgos" de valor, los 6 en el
+# mismo mercado (Empate) y la misma liga (MLS) -- un patron sospechoso
+# de sesgo por poca muestra, no de valor real (ver CHANGELOG.md). MLS
+# tiene menos casas cotizando que las ligas europeas grandes, asi que
+# con solo 3 casas de referencia la mediana tiene mucha varianza,
+# especialmente en el mercado de empate (menos liquido). Se sube el
+# minimo a 5 para exigir una mediana mas estable antes de confiar en
+# una senal.
+MINIMO_CASAS_REFERENCIA = 5
 
 # --- Kelly fraccionado (protocolo existente del Excel, punto 24) ---
 KELLY_FRACCION = 0.10
@@ -265,7 +275,7 @@ def formatear_hallazgo_valor(partido_nombre: str, liga: str, inicio: str, result
                               prob_justa: float, cuota_1xbet: float, num_casas_ref: int, ev: float) -> str:
     stake = kelly_fraccionado(prob_justa, cuota_1xbet)
     return (
-        f"📈 <b>Posible valor en 1xBet</b>\n"
+        f"ð <b>Posible valor en 1xBet</b>\n"
         f"{partido_nombre} ({liga})\n"
         f"Inicio: {inicio}\n\n"
         f"Resultado: <b>{resultado}</b>\n"
@@ -273,7 +283,7 @@ def formatear_hallazgo_valor(partido_nombre: str, liga: str, inicio: str, result
         f"Probabilidad justa (mediana de {num_casas_ref} otras casas, sin incluir 1xBet): {prob_justa*100:.1f}%\n"
         f"EV estimado: {ev*100:+.2f}%\n"
         f"Stake sugerido (Kelly 0.10, tope 3%): {stake*100:.2f}% de banca\n\n"
-        f"⚠️ Esto compara la cuota de 1xBet contra el resto del mercado, "
+        f"â ï¸ Esto compara la cuota de 1xBet contra el resto del mercado, "
         f"NO usa un modelo estadistico propio todavia. Verifica el precio "
         f"actual en la app de 1xBet antes de apostar -- las cuotas cambian rapido."
     )
@@ -326,6 +336,16 @@ def ejecutar_ronda() -> None:
                     continue
                 ev = prob * cuota - 1
                 if ev >= UMBRAL_EV_MINIMO:
+                    # Log detallado por hallazgo -- para poder auditar despues
+                    # si un patron (misma liga, mismo mercado) se repite, que
+                    # es la senal de alerta de sesgo por poca muestra que ya
+                    # vimos en la corrida real del 2026-08-29 (6 hallazgos,
+                    # todos Empate en MLS, con MINIMO_CASAS_REFERENCIA=3).
+                    print(
+                        f"[DETALLE] {nombre_partido} ({liga}) | resultado={resultado} | "
+                        f"cuota_1xbet={cuota} | prob_justa={prob*100:.1f}% | "
+                        f"num_casas_ref={num_casas_ref} | ev={ev*100:+.2f}%"
+                    )
                     hallazgos_valor.append(
                         (nombre_partido, liga, inicio.isoformat(), resultado, prob, cuota, num_casas_ref, ev)
                     )
