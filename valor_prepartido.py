@@ -94,12 +94,29 @@ LIGAS_A_REVISAR = [
 # Ventana hacia adelante en la que buscamos partidos (horas).
 VENTANA_HORAS = 6
 
-# Umbral minimo de EV (cuota de 1xBet vs. mediana de las OTRAS casas)
-# para considerar que algo es una posible senal de valor. Se mantiene
-# en 5% (conservador) porque, aunque el metodo leave-one-out corrige
-# el sesgo de seleccion mas grave, sigue siendo comparacion entre
-# casas y no un modelo propio -- ver limitacion honesta al inicio.
-UMBRAL_EV_MINIMO = 0.05
+# AJUSTE 2026-08-30 (filtro hibrido, pedido explicito del usuario):
+# hasta ahora el bot ordenaba todo por EV (valor matematico), lo cual
+# permitia que un Empate a cuota 4.64 con 22.6% de probabilidad real
+# pasara el filtro solo por tener EV positivo -- matematicamente
+# correcto a largo plazo, pero la mayoria de las veces esa apuesta
+# INDIVIDUAL se pierde. El usuario fue explicito: quiere que DOMINE
+# la probabilidad de que la apuesta gane, sin importar que la cuota
+# sea baja (1.20, 1.35, lo que sea). Se cambia el diseno:
+#
+#   1. UMBRAL_PROBABILIDAD_MINIMA es ahora el filtro PRINCIPAL: si la
+#      probabilidad justa (consenso de mercado, leave-one-out) no
+#      llega a este minimo, la senal ni se considera, sin importar
+#      su EV.
+#   2. UMBRAL_EV_MINIMO baja a un piso casi minimo (no negativo): ya
+#      no exigimos "valor grande" como antes, solo que 1xBet no pague
+#      PEOR que el resto del mercado. Es un chequeo de sanidad, no el
+#      filtro principal.
+#
+# Con esto, las alertas van a ser mayoritariamente favoritos claros
+# (locales o visitantes fuertes) en vez de empates de cuota alta.
+UMBRAL_PROBABILIDAD_MINIMA = 0.65
+
+UMBRAL_EV_MINIMO = 0.0
 
 # Minimo de casas de REFERENCIA (sin contar a 1xBet) necesarias para
 # calcular una mediana medianamente confiable. Menos que esto y el
@@ -275,17 +292,18 @@ def formatear_hallazgo_valor(partido_nombre: str, liga: str, inicio: str, result
                               prob_justa: float, cuota_1xbet: float, num_casas_ref: int, ev: float) -> str:
     stake = kelly_fraccionado(prob_justa, cuota_1xbet)
     return (
-        f"ð <b>Posible valor en 1xBet</b>\n"
+        f"🎯 <b>Alta probabilidad en 1xBet</b>\n"
         f"{partido_nombre} ({liga})\n"
         f"Inicio: {inicio}\n\n"
         f"Resultado: <b>{resultado}</b>\n"
+        f"Probabilidad estimada de que gane (consenso de {num_casas_ref} casas, sin incluir 1xBet): <b>{prob_justa*100:.1f}%</b>\n"
         f"Cuota en 1xBet: {cuota_1xbet}\n"
-        f"Probabilidad justa (mediana de {num_casas_ref} otras casas, sin incluir 1xBet): {prob_justa*100:.1f}%\n"
-        f"EV estimado: {ev*100:+.2f}%\n"
+        f"EV vs. mercado: {ev*100:+.2f}% (1xBet no paga peor que el consenso)\n"
         f"Stake sugerido (Kelly 0.10, tope 3%): {stake*100:.2f}% de banca\n\n"
-        f"â ï¸ Esto compara la cuota de 1xBet contra el resto del mercado, "
-        f"NO usa un modelo estadistico propio todavia. Verifica el precio "
-        f"actual en la app de 1xBet antes de apostar -- las cuotas cambian rapido."
+        f"⚠️ La probabilidad es una estimacion del consenso de mercado (leave-one-out), "
+        f"NO una garantia -- incluso con {prob_justa*100:.0f}% de probabilidad, "
+        f"aproximadamente {round((1-prob_justa)*100)} de cada 100 veces esta apuesta se pierde. "
+        f"Verifica el precio actual en la app de 1xBet antes de apostar -- las cuotas cambian rapido."
     )
 
 
@@ -334,13 +352,21 @@ def ejecutar_ronda() -> None:
                 prob = justa.get(resultado)
                 if prob is None:
                     continue
+                # FILTRO PRINCIPAL: probabilidad primero. Si el consenso de
+                # mercado no le da a este resultado al menos
+                # UMBRAL_PROBABILIDAD_MINIMA de probabilidad, se descarta
+                # sin mirar el EV -- asi sea Empate a cuota jugosa o
+                # favorito a cuota 1.20. Esto es un pedido explicito del
+                # usuario (2026-08-30): prioriza que la apuesta tenga alta
+                # probabilidad de ganar, no que "pague bien" en el papel.
+                if prob < UMBRAL_PROBABILIDAD_MINIMA:
+                    continue
                 ev = prob * cuota - 1
+                # FILTRO SECUNDARIO (chequeo de sanidad, no el criterio
+                # principal): que 1xBet no pague peor que el resto del
+                # mercado. UMBRAL_EV_MINIMO=0.0 solo evita mandarte un
+                # favorito donde 1xBet te da menos de lo que "deberia".
                 if ev >= UMBRAL_EV_MINIMO:
-                    # Log detallado por hallazgo -- para poder auditar despues
-                    # si un patron (misma liga, mismo mercado) se repite, que
-                    # es la senal de alerta de sesgo por poca muestra que ya
-                    # vimos en la corrida real del 2026-08-29 (6 hallazgos,
-                    # todos Empate en MLS, con MINIMO_CASAS_REFERENCIA=3).
                     print(
                         f"[DETALLE] {nombre_partido} ({liga}) | resultado={resultado} | "
                         f"cuota_1xbet={cuota} | prob_justa={prob*100:.1f}% | "
@@ -350,7 +376,11 @@ def ejecutar_ronda() -> None:
                         (nombre_partido, liga, inicio.isoformat(), resultado, prob, cuota, num_casas_ref, ev)
                     )
 
-    print(f"[INFO] Hallazgos de valor en 1xBet (EV >= {UMBRAL_EV_MINIMO*100:.0f}%): {len(hallazgos_valor)}")
+    # Se muestran primero las de MAYOR probabilidad -- ese es ahora el
+    # criterio de orden principal, no el EV.
+    hallazgos_valor.sort(key=lambda h: h[4], reverse=True)
+
+    print(f"[INFO] Hallazgos con probabilidad >= {UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% en 1xBet: {len(hallazgos_valor)}")
     print(f"[INFO] Partidos saltados por no estar en 1xBet: {partidos_sin_1xbet}")
     print(f"[INFO] Partidos saltados por pocas casas de referencia (<{MINIMO_CASAS_REFERENCIA}): {partidos_sin_referencia_suficiente}")
 
