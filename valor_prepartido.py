@@ -150,7 +150,15 @@ LIGAS_FUTBOL = [
 LIGAS_BALONCESTO = ["basketball_nba", "basketball_ncaab", "basketball_euroleague"]
 LIGAS_HOCKEY = ["icehockey_nhl"]
 LIGAS_BEISBOL = ["baseball_mlb"]
-LIGAS_ESPORTS = ["esports_lol", "esports_csgo", "esports_dota2", "esports_valorant"]
+# AJUSTE 2026-08-30 (fix critico post-ronda real): las claves fijas
+# "esports_csgo", "esports_dota2", "esports_valorant" dieron 404 Not
+# Found en la ronda real -- no son claves validas de The Odds API tal
+# como estaban escritas (los nombres exactos de eSports cambian mas
+# de lo esperado). Se agregan de forma DINAMICA igual que el tenis,
+# consultando /v4/sports (gratis) y tomando lo que empiece con
+# "esports_" y este activo, en vez de arriesgarnos a adivinar mal el
+# nombre de nuevo.
+MAX_LIGAS_ESPORTS = 6
 
 # Tenis se agrega de forma dinamica (ver obtener_torneos_tenis_activos)
 # porque los sport_key de The Odds API son por torneo especifico y
@@ -262,28 +270,85 @@ def obtener_torneos_tenis_activos() -> list:
     return torneos[:MAX_TORNEOS_TENIS]
 
 
+def obtener_ligas_esports_activas() -> list:
+    """
+    Igual que obtener_torneos_tenis_activos pero para eSports: consulta
+    /v4/sports (gratis) y toma las claves activas que empiecen con
+    "esports_", en vez de hardcodear nombres que resultaron invalidos
+    (ver AJUSTE 2026-08-30 arriba).
+    """
+    if not ODDS_API_KEY:
+        return []
+    url = f"{ODDS_API_BASE}/sports"
+    try:
+        resp = requests.get(url, params={"apiKey": ODDS_API_KEY, "all": "false"}, timeout=20)
+        resp.raise_for_status()
+        deportes = resp.json()
+    except (requests.RequestException, ValueError) as e:
+        print(f"[ERROR] no se pudo consultar /v4/sports para eSports: {e}")
+        return []
+    ligas = [
+        d["key"] for d in deportes
+        if isinstance(d, dict) and d.get("key", "").startswith("esports_") and d.get("active")
+    ]
+    return ligas[:MAX_LIGAS_ESPORTS]
+
+
+def _pedir_odds(sport_key: str, markets: str):
+    url = f"{ODDS_API_BASE}/sports/{sport_key}/odds/"
+    resp = requests.get(
+        url,
+        params={
+            "apiKey": ODDS_API_KEY,
+            # Solo region "eu" -- ahi aparece 1xBet, y no pagamos
+            # creditos de mas por regiones (uk, us) que el usuario
+            # nunca va a poder usar.
+            "regions": "eu",
+            "markets": markets,
+            "oddsFormat": "decimal",
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp
+
+
+# AJUSTE 2026-08-30 (fix critico post-ronda real): pedir los 6
+# mercados de futbol juntos (h2h,totals,spreads,btts,draw_no_bet,
+# double_chance) devolvio 422 "Unprocessable Entity" en las 32 ligas
+# de futbol en la ronda real de las 09:14 UTC -- The Odds API rechazo
+# la combinacion completa (probablemente btts/draw_no_bet/
+# double_chance no son validos juntos con el resto en la region "eu"
+# para muchas ligas). Resultado real: 0 partidos de futbol analizados
+# esa ronda, el deporte principal del usuario quedo sin cobertura.
+# Fallback: si la peticion con todos los mercados falla, se reintenta
+# SOLO con el combo basico h2h,totals,spreads (probado, funciona --
+# ver logs reales de basketball/hockey/baseball/tenis en esa misma
+# ronda). Esto prioriza tener datos reales de futbol sobre tener
+# todos los mercados; los mercados adicionales (btts, draw_no_bet,
+# double_chance) quedan pendientes de una investigacion mas
+# cuidadosa de que combinaciones acepta la API por region/liga.
+MERCADOS_BASICOS_FALLBACK = "h2h,totals,spreads"
+
+
 def obtener_cuotas(sport_key: str, markets: str):
     if not ODDS_API_KEY:
         return [], -1
-    url = f"{ODDS_API_BASE}/sports/{sport_key}/odds/"
     try:
-        resp = requests.get(
-            url,
-            params={
-                "apiKey": ODDS_API_KEY,
-                # Solo region "eu" -- ahi aparece 1xBet, y no pagamos
-                # creditos de mas por regiones (uk, us) que el usuario
-                # nunca va a poder usar.
-                "regions": "eu",
-                "markets": markets,
-                "oddsFormat": "decimal",
-            },
-            timeout=20,
-        )
-        resp.raise_for_status()
+        resp = _pedir_odds(sport_key, markets)
     except requests.RequestException as e:
-        print(f"[ERROR] odds {sport_key}: {e}")
-        return [], -1
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 422 and markets != MERCADOS_BASICOS_FALLBACK:
+            print(f"[INFO] {sport_key}: 422 con mercados={markets}, "
+                  f"reintentando con fallback basico ({MERCADOS_BASICOS_FALLBACK})")
+            try:
+                resp = _pedir_odds(sport_key, MERCADOS_BASICOS_FALLBACK)
+            except requests.RequestException as e2:
+                print(f"[ERROR] odds {sport_key} (fallback tambien fallo): {e2}")
+                return [], -1
+        else:
+            print(f"[ERROR] odds {sport_key}: {e}")
+            return [], -1
     return resp.json(), _creditos_restantes(resp)
 
 
@@ -340,9 +405,21 @@ def probabilidad_propia_1xbet(cuotas_propias: dict) -> dict:
     "devigea" dividiendo por la suma de todas las implicitas del
     mercado (el overround/margen propio de 1xBet).
     """
-    if not cuotas_propias:
+    # AJUSTE 2026-08-30 (fix critico): si 1xBet solo trae UN resultado
+    # cotizado para este mercado (por ejemplo solo un lado de un
+    # handicap), no hay nada que devigear -- la formula anterior
+    # devolvia 100% de probabilidad siempre en ese caso (implicita
+    # dividida entre si misma), lo cual es un artefacto matematico,
+    # NO una probabilidad real. Se detecto en la ronda real del
+    # 2026-08-30 09:14 UTC: 23 de 24 "hallazgos" enviados a Telegram
+    # eran falsos 100% por este bug. Ahora se exige minimo 2
+    # resultados cotizados por 1xBet en el mismo mercado para poder
+    # calcular una probabilidad valida.
+    if not cuotas_propias or len(cuotas_propias) < 2:
         return {}
     implicita = {r: 1 / c for r, c in cuotas_propias.items() if c and c > 0}
+    if len(implicita) < 2:
+        return {}
     overround = sum(implicita.values())
     if overround <= 0:
         return {}
@@ -459,8 +536,11 @@ def ejecutar_ronda() -> None:
     torneos_tenis = obtener_torneos_tenis_activos()
     print(f"[INFO] Torneos de tenis activos detectados (max {MAX_TORNEOS_TENIS}): {torneos_tenis}")
 
+    ligas_esports = obtener_ligas_esports_activas()
+    print(f"[INFO] Ligas de eSports activas detectadas (max {MAX_LIGAS_ESPORTS}): {ligas_esports}")
+
     deportes_a_revisar = (
-        LIGAS_FUTBOL + LIGAS_BALONCESTO + LIGAS_HOCKEY + LIGAS_BEISBOL + torneos_tenis + LIGAS_ESPORTS
+        LIGAS_FUTBOL + LIGAS_BALONCESTO + LIGAS_HOCKEY + LIGAS_BEISBOL + torneos_tenis + ligas_esports
     )
 
     for sport_key in deportes_a_revisar:
