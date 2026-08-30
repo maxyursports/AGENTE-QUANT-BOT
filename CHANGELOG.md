@@ -3,6 +3,28 @@
 Registro de cambios de estrategia y sistema (ver DISCIPLINA.md, punto 34).
 Formato: fecha, que cambio, por que.
 
+## 2026-08-30 (mismo dia, fix critico post-ronda real)
+
+- **Fix urgente tras encontrar 2 bugs en la primera ronda real con
+  multi-mercado/multi-deporte (run 09:14 UTC):**
+  1. Futbol daba 422 en las 32 ligas al pedir los 6 mercados juntos
+     (h2h,totals,spreads,btts,draw_no_bet,double_chance) -- 0 partidos
+     de futbol analizados. Fix: fallback automatico a
+     h2h,totals,spreads si el combo completo falla.
+  2. BUG GRAVE: cuando 1xBet solo cotizaba un lado de un mercado (ej.
+     un handicap), la formula de devig devolvia 100% de probabilidad
+     siempre (division de un numero por si mismo). 23 de 24
+     "hallazgos" enviados a Telegram en esa ronda eran falsos 100%.
+     Fix: se exige minimo 2 resultados cotizados por 1xBet para
+     calcular probabilidad; si no, se descarta el mercado.
+  3. Las claves de eSports (esports_csgo, esports_dota2,
+     esports_valorant) daban 404 -- no eran validas. Fix: se
+     descubren de forma dinamica via /v4/sports, igual que tenis.
+
+  Estado: implementado, verificado con ast.parse y byte a byte contra
+  GitHub. PENDIENTE: volver a correr el workflow real para confirmar
+  que futbol ya trae datos y que ya no salen falsos 100%.
+
 ## 2026-08-30 (mismo dia, ampliacion de mercados y deportes)
 
 - **Se amplia valor_prepartido.py de un solo mercado (h2h) y un solo
