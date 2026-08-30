@@ -3,6 +3,67 @@
 Registro de cambios de estrategia y sistema (ver DISCIPLINA.md, punto 34).
 Formato: fecha, que cambio, por que.
 
+## 2026-08-30 (mismo dia, ampliacion de mercados y deportes)
+
+- **Se amplia valor_prepartido.py de un solo mercado (h2h) y un solo
+  deporte (futbol) a multiples mercados y multiples deportes**. Pedido
+  explicito del usuario: "Si, quiero que agregues todos los mercados
+  que te envie del futbol y que agregues los otros deportes que te
+  dije. Recuerda que tu trabajo es buscarme las mejores apuestas que
+  puedo hacer."
+
+  Cambios concretos:
+  1. Futbol ya no se evalua solo en el mercado h2h (1x2). Ahora se
+     piden tambien: totals (total de goles over/under), spreads
+     (handicap asiatico/europeo), btts (ambos anotan), draw_no_bet
+     (sin empate) y double_chance (doble oportunidad). Son los
+     mercados que The Odds API efectivamente soporta para futbol --
+     ver LIMITACION HONESTA abajo para lo que NO cubre.
+  2. Se agregan otros deportes pedidos explicitamente por el usuario:
+     baloncesto (NBA, NCAAB, Euroleague), hockey sobre hielo (NHL),
+     beisbol (MLB) y eSports (League of Legends, CS:GO, Dota 2,
+     Valorant), cada uno con los mercados que The Odds API soporta
+     para ese deporte (h2h siempre; spreads/totals donde aplica).
+  3. Tenis se agrega de forma DINAMICA: en vez de hardcodear torneos
+     (que cambian constantemente -- Wimbledon, US Open, Roland
+     Garros, etc. solo existen como sport_key mientras el torneo esta
+     activo), el bot consulta el endpoint /v4/sports de The Odds API
+     (esta consulta NO consume creditos segun la documentacion
+     oficial) y toma los torneos ATP/WTA activos en ese momento,
+     hasta un maximo de MAX_TORNEOS_TENIS=8 para no disparar el
+     consumo de creditos.
+  4. Cada resultado ahora se etiqueta con el nombre del mercado (ej.
+     "Total de goles/puntos (2.5)", "Handicap (-1.5)") para que el
+     usuario sepa exactamente que tipo de apuesta es, no solo el
+     resultado 1x2.
+  5. El calculo de probabilidad implicita (devig) se hace POR
+     SEPARADO dentro de cada (mercado, linea) -- nunca se mezclan las
+     probabilidades de mercados distintos en el mismo calculo de
+     overround, para no distorsionar el margen propio de 1xBet.
+  6. UMBRAL_CREDITOS_SEGURIDAD sube de 15 a 50: al pedir varios
+     mercados por llamada el costo en creditos por llamada sube (The
+     Odds API cobra aproximadamente 1 credito por mercado solicitado,
+     por region, no por partido). Antes cada llamada de futbol
+     costaba ~1 credito; ahora puede costar hasta 6 (un credito por
+     cada uno de los 6 mercados pedidos). Se sube el freno de
+     seguridad de creditos para compensar y nunca quedarse sin
+     creditos a mitad de mes.
+
+  LIMITACION HONESTA QUE SIGUE VIGENTE: The Odds API no cubre toda la
+  granularidad que el usuario pidio originalmente (corners por
+  minuto, tarjetas, marcador exacto, mercados de jugador, mercados en
+  vivo detallados). Esta es una limitacion de la fuente de datos
+  actual, no del diseno del bot -- cubrir esos mercados requeriria
+  evaluar una fuente de datos adicional (ver investigacion de
+  API-Football / Sportmonks, aun no contratada). Ademas, la
+  probabilidad que calcula el bot sigue siendo la probabilidad
+  IMPLICITA en las cuotas de 1xBet, no una probabilidad calculada con
+  datos reales del deporte (lesionados, alineaciones, forma, etc.).
+
+  Estado: implementado, verificado con ast.parse, pendiente de
+  correr contra la API real para medir el consumo real de creditos
+  con el nuevo volumen de mercados/deportes.
+
 ## 2026-08-29
 
 - **Se agrega elo_model.py**: motor de Elo propio con ajuste de
