@@ -98,8 +98,8 @@ select is(
 
 -- Recalcular el hash de identidad con los mismos inputs produce el MISMO hash (reproducibilidad).
 select is(
-  encode(public.digest('test-replay-input', 'sha256'), 'hex'),
-  encode(public.digest('test-replay-input', 'sha256'), 'hex'),
+  encode(extensions.digest('test-replay-input', 'sha256'), 'hex'),
+  encode(extensions.digest('test-replay-input', 'sha256'), 'hex'),
   'el mismo input produce siempre el mismo hash (determinismo, SAQ-CC-V1: "que calculo, que publico")'
 );
 

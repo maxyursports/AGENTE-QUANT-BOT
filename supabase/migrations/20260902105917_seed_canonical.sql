@@ -64,7 +64,7 @@ insert into cfg.market_contract_versions (
 select
   p.project_id, mc.market_contract_id, '0.1.0-draft', 'MATCH', v.unit,
   v.line_schema, v.selection_schema, v.payoff_rule, '{}'::jsonb, clock_timestamp(),
-  encode(public.digest(mc.contract_key || ':0.1.0-draft', 'sha256'), 'hex')
+  encode(extensions.digest(mc.contract_key || ':0.1.0-draft', 'sha256'), 'hex')
 from cfg.projects p
 join cfg.market_contracts mc on mc.project_id = p.project_id
 join (values
@@ -166,6 +166,6 @@ select
       "execution_clv_formula":"actual_odds/same_book_close_odds-1"
     }
   }'::jsonb,
-  encode(public.digest('a2_freshness_and_a5_consensus_gates:0.1.0-draft', 'sha256'), 'hex'),
+  encode(extensions.digest('a2_freshness_and_a5_consensus_gates:0.1.0-draft', 'sha256'), 'hex'),
   clock_timestamp()
 from cfg.projects p where p.project_key = 'agente-quant-bot';

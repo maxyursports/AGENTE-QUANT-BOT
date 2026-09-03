@@ -157,7 +157,7 @@ begin
   end if;
 
   -- 5. return existing execution when idempotency hash matches.
-  v_event_hash := encode(public.digest(p_signal_id::text || ':' || p_idempotency_key, 'sha256'), 'hex');
+  v_event_hash := encode(extensions.digest(p_signal_id::text || ':' || p_idempotency_key, 'sha256'), 'hex');
 
   select ee.execution_id into v_existing_execution_id
   from ops.execution_events ee
@@ -230,7 +230,7 @@ begin
     v_signal.project_id, v_execution_id, null, 'NOT_PLACED'::app.execution_status,
     'USER',
     jsonb_build_object('rejection_reason', p_rejection_reason),
-    encode(public.digest(v_execution_id::text || ':not_placed', 'sha256'), 'hex')
+    encode(extensions.digest(v_execution_id::text || ':not_placed', 'sha256'), 'hex')
   );
 
   return v_execution_id;
@@ -281,7 +281,7 @@ begin
   ) values (
     v_project_id, 'USER', auth.uid(), 'REQUEST_SETTLEMENT_REPLAY', 'ops', 'settlements', p_settlement_id,
     p_reason, clock_timestamp(),
-    encode(public.digest(p_settlement_id::text || ':' || clock_timestamp()::text, 'sha256'), 'hex')
+    encode(extensions.digest(p_settlement_id::text || ':' || clock_timestamp()::text, 'sha256'), 'hex')
   )
   returning audit_event_id into v_audit_event_id;
 
