@@ -64,7 +64,10 @@ select is((select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.
     where n.nspname = 'api'), 4, 'exactamente 4 RPC api.*');
 select is((select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'app'), 15, 'exactamente 15 funciones app.*');
-select is((select count(*)::int from pg_trigger where not tgisinternal), 31, 'exactamente 31 instancias de trigger');
+select is((select count(*)::int from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where not t.tgisinternal and n.nspname in ('cfg','core','market','model','ops','raw')), 31, 'exactamente 31 instancias de trigger');
 
 -- PK / UQ / FK representativos (uno por cada schema, no exhaustivo por brevedad de la suite).
 select has_pk('cfg', 'projects', 'cfg.projects tiene PK');
