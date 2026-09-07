@@ -1,8 +1,10 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (04_bitemporal): available_for_model_at y decision_at.
 -- Leakage rechazado (SAQ-CC-V1 §10); el registro del DataQualityEvent es responsabilidad de la
 -- capa de servicio, no del trigger (SAQ-MCDS-V1.1-APPROVED §4.5 instancia 16) -- se verifica que
 -- la transaccion completa (incluido cualquier intento de auditoria dentro de ella) se revierte.
 begin;
+SET LOCAL ROLE postgres;
 select plan(5);
 
 insert into core.events (project_id, sport_id, competition_id, identity_status, candidate_fingerprint)

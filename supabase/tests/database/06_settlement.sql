@@ -1,6 +1,8 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (06_settlement): WIN/HALF_WIN/PUSH/HALF_LOSS/LOSS/VOID.
 -- Payoff exacto para enteros, medias y cuartos (SAQ-CC-V1 §14/§15).
 begin;
+SET LOCAL ROLE postgres;
 select plan(7);
 
 insert into core.events (project_id, sport_id, competition_id, identity_status, candidate_fingerprint)

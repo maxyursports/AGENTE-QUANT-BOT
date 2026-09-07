@@ -1,6 +1,8 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (05_state_machines): transiciones validas e invalidas.
 -- UNKNOWN permanece UNKNOWN sin evidencia (SAQ-CC-V1 §7 invariante).
 begin;
+SET LOCAL ROLE postgres;
 select plan(5);
 
 insert into core.events (project_id, sport_id, competition_id, identity_status, candidate_fingerprint)
