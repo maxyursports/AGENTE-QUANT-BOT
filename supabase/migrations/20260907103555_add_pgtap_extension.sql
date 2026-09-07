@@ -1,0 +1,12 @@
+-- SAQ-MCDS-V1 · Fix pgTAP en saq-staging
+-- La migracion 0001_extensions_and_schemas.sql omitio deliberadamente
+-- pgTAP asumiendo que solo se usaria en el entorno de pruebas local.
+-- Sin embargo, `supabase test db --linked` ejecuta los 10 archivos de
+-- supabase/tests/database/*.sql contra la base remota, y estos dependen
+-- de las funciones de pgTAP (plan(), ok(), is(), finish(), etc.), que
+-- no existen si la extension no esta instalada ahi.
+--
+-- Se instala en el esquema "extensions" (convencion estandar de Supabase,
+-- ya incluido en extra_search_path de supabase/config.toml), sin alterar
+-- el search_path global de la base ni las migraciones ya aplicadas.
+create extension if not exists pgtap with schema extensions;
