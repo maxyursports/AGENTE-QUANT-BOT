@@ -1,6 +1,8 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (03_idempotency): repeticion y hash conflictivo.
 -- Mismo contenido no duplica; conflicto falla (SAQ-MCDS-V1 §11).
 begin;
+SET LOCAL ROLE postgres;
 select plan(6);
 
 -- Fixture: una selection valida para colgar odds_snapshots.

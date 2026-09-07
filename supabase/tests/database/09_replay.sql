@@ -1,7 +1,9 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (09_replay): reconstruccion de prediction -> settlement.
 -- Mismos hashes y resultados (SAQ-CC-V1: "que sabia, cuando, que calculo, que se ejecuto y como
 -- se liquido"; SAQ-MCDS-V1 §11 append-only/supersedes).
 begin;
+SET LOCAL ROLE postgres;
 select plan(6);
 
 insert into core.events (project_id, sport_id, competition_id, identity_status, candidate_fingerprint)

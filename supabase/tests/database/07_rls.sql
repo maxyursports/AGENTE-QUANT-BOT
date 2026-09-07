@@ -1,6 +1,8 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (07_rls): allow/deny por anon y cada rol.
 -- Sin acceso cruzado entre proyectos (SAQ-MCDS-V1 §24, Apendice B.3).
 begin;
+SET LOCAL ROLE postgres;
 select plan(8);
 
 -- Segundo proyecto ("B") para probar aislamiento cruzado frente al proyecto seed ("A").

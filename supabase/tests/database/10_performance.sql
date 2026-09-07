@@ -1,3 +1,4 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (10_performance): consultas calientes con datos representativos.
 -- El plan usa los indices aprobados en SAQ-MCDS-V1 §21.
 --
@@ -10,6 +11,7 @@
 -- representativa con datos de volumen productivo (Definition of Done §31.3, pendiente de una
 -- carga de datos real fuera del alcance de Fase 1).
 begin;
+SET LOCAL ROLE postgres;
 select plan(11);
 
 select has_index('core', 'event_versions', 'event_versions_project_scheduled_idx', 'indice "Eventos proximos" (§21) existe');

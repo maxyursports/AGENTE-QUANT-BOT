@@ -1,6 +1,8 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (08_rpc): confirmacion concurrente/repetida.
 -- Una sola ejecucion canonica (SAQ-MCDS-V1 §26, Apendice B "confirm_execution").
 begin;
+SET LOCAL ROLE postgres;
 select plan(6);
 
 insert into auth.users (id) values ('33333333-3333-3333-3333-333333333333');

@@ -1,6 +1,8 @@
+SET search_path = extensions, public;
 -- SAQ-MCDS-V1 §29 (02_checks): rangos numeric, hashes, ubicacion de raw, tiempos.
 -- Writes invalidos fallan.
 begin;
+SET LOCAL ROLE postgres;
 select plan(11);
 
 -- Fixtures del seed canonico (0013).
