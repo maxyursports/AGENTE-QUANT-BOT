@@ -1,0 +1,63 @@
+name: Test Fase 1 — Supabase (pgTAP)
+
+# BORRADOR — no aplicado al repositorio real. Diseñado para vivir en
+# .github/workflows/test-fase1-supabase.yml una vez autorizado.
+#
+# Qué hace: levanta el stack local real de Supabase (vía el CLI oficial,
+# que usa Docker internamente) con la MISMA versión de PostgreSQL que
+# declara supabase/config.toml, aplica las migraciones reales de
+# supabase/migrations/ y corre la suite real de pgTAP en
+# supabase/tests/database/ con `supabase test db`.
+#
+# Por qué así y no con un contenedor postgres:16 hecho a mano: el CLI
+# de Supabase reproduce el entorno real (esquema auth, roles anon/
+# authenticated/service_role, extensiones) sin tener que mantener un
+# script de "stubs" por separado que puede desincronizarse del entorno
+# real. Es el mismo patrón de CI que Supabase documenta oficialmente.
+#
+# LIMITACIÓN DECLARADA: este YAML no se ha podido ejecutar de punta a
+# punta en el entorno de esta auditoría porque no hay un daemon de
+# Docker disponible aquí. Sí está validado, de forma manual y repetida
+# (5 veces, 141/141 aserciones), que las migraciones reales + la suite
+# de pgTAP + el parche de fixtures (ver HALLAZGO_incompatibilidad_con_pgTAP.md)
+# funcionan correctamente — pero esas corridas manuales fueron contra
+# PostgreSQL 16, mientras que supabase/config.toml declara
+# major_version = 17. Ver HALLAZGO_postgresql_16_vs_17.md: hace falta
+# una corrida real de este workflow (o de `supabase test db` en un
+# entorno con Docker) contra PG 17 antes de confiar en él para producción.
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/tests/**"
+      - "supabase/config.toml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  pgtap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Levantar el stack local de Supabase (Postgres real, versión de config.toml)
+        run: supabase db start
+
+      - name: Aplicar migraciones reales
+        run: supabase db reset
+
+      - name: Correr la suite real de pgTAP
+        run: supabase test db
+
+      - name: Apagar el stack
+        if: always()
+        run: supabase stop --no-backup
