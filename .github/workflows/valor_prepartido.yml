@@ -1,19 +1,19 @@
 name: Valor pre-partido (Superagente Quant)
 
-# PAUSADO EN AUTOMATICO -- 2026-08-29 (aplicando el circuit breaker de
-# DISCIPLINA.md). Las primeras 2 corridas reales encontraron 23 y 15
-# "hallazgos" de valor respectivamente, una tasa demasiado alta para
-# ser creible como ventaja real -- el metodo de comparar la mejor cuota
-# contra la mediana del mercado sigue produciendo bastante ruido con
-# solo 5-8 casas por partido. Se quita el cron automatico (schedule) y
-# se deja SOLO ejecucion manual (workflow_dispatch) hasta que el metodo
-# se valide mejor (ver CHANGELOG.md) -- por ejemplo, comparando contra
-# el Brier score de un periodo de prueba, o incorporando el modelo Elo
-# propio (elo_model.py) como fuente adicional de probabilidad antes de
-# confiar en estas alertas. NO reactivar el cron sin antes documentar
-# la correccion en CHANGELOG.md (regla de disciplina, no ajustar en
-# caliente sin registrar el motivo).
+# Reactivado en automatico -- 2026-09-11. Ver CHANGELOG.md para el
+# detalle de la decision: se reactiva el cron sin completar el periodo
+# de validacion multi-dia de Closing Line Value (CLV) documentado en el
+# circuit breaker de DISCIPLINA.md (2026-08-29). Decision tomada a
+# pedido explicito del usuario, aceptando ese riesgo. Monitorear de
+# cerca los resultados de los primeros dias y estar listos para volver
+# a MODO_SOLO_REGISTRO o pausar el cron si se repite la tasa de ruido
+# que origino la pausa anterior (23 y 15 "hallazgos" en las primeras 2
+# corridas reales).
 on:
+  schedule:
+    - cron: "0 9 * * *"
+    - cron: "0 15 * * *"
+    - cron: "0 20 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -39,7 +39,6 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          MODO_SOLO_REGISTRO: "true"
         run: python valor_prepartido.py
 
       - name: Guardar historial de cuotas
