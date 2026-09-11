@@ -95,6 +95,15 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 
+# NUEVO (borrador, sin autorizar): con MODO_SOLO_REGISTRO=true, la ronda
+# completa corre igual (misma deteccion, mismo historial) pero NINGUN
+# hallazgo se manda a Telegram -- exactamente el "modo solo registro"
+# que DISCIPLINA.md exige antes de reactivar el cron automatico (ver
+# CHANGELOG.md, 2026-08-29, condicion 1). Por defecto queda en false,
+# es decir, el comportamiento actual no cambia si esta variable no se
+# define.
+MODO_SOLO_REGISTRO = os.environ.get("MODO_SOLO_REGISTRO", "false").strip().lower() == "true"
+
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
 # La unica casa que usa el usuario. Todo el analisis gira en torno a
@@ -451,7 +460,14 @@ def kelly_fraccionado(prob: float, cuota: float) -> float:
 # HISTORIAL DE CUOTAS (para CLV y steam moves -- puntos 4, 17, 18)
 # ----------------------------------------------------------------------
 
-def guardar_en_historial(evento_id: str, partido: str, deporte: str, momento: str, tabla_mercados: dict) -> None:
+def guardar_en_historial(
+    evento_id: str,
+    partido: str,
+    deporte: str,
+    momento: str,
+    tabla_mercados: dict,
+    hora_inicio_utc: str = None,
+) -> None:
     ESTADO_DIR.mkdir(parents=True, exist_ok=True)
     # Las claves de tabla_mercados son tuplas (market_key, point), que
     # no son serializables directamente a JSON -- se convierten a
@@ -465,6 +481,13 @@ def guardar_en_historial(evento_id: str, partido: str, deporte: str, momento: st
         "partido": partido,
         "deporte": deporte,
         "momento_consulta": momento,
+        # NUEVO (borrador, sin autorizar): hora real de inicio del
+        # partido, ya calculada por el llamador (variable `inicio`) --
+        # sin esto no hay forma de saber que tan cerca del cierre
+        # estuvo cualquier consulta futura (ver
+        # ANALISIS_viabilidad_backtest_CLV.md). Puede venir None si se
+        # llama desde un contexto que no la calculo.
+        "commence_time_utc": hora_inicio_utc,
         "cuotas": cuotas_serializables,
     }
     with HISTORIAL_CUOTAS_PATH.open("a", encoding="utf-8") as f:
@@ -568,7 +591,10 @@ def ejecutar_ronda() -> None:
                 continue  # 1xBet no cubre este partido en ningun mercado pedido
 
             nombre_partido = f"{partido['home_team']} vs {partido['away_team']}"
-            guardar_en_historial(partido["id"], nombre_partido, sport_key, "pre_partido", tabla_mercados)
+            guardar_en_historial(
+                partido["id"], nombre_partido, sport_key, "pre_partido", tabla_mercados,
+                hora_inicio_utc=inicio.isoformat(),
+            )
 
             # AJUSTE 2026-08-30: probabilidad calculada SOLO con las
             # cuotas propias de 1xBet, por mercado -- ya no se compara
@@ -610,12 +636,18 @@ def ejecutar_ronda() -> None:
     msg_principal = formatear_recomendacion_principal(
         principal[0], principal[1], principal[2], principal[3], principal[4], principal[5], principal[6]
     )
-    if enviar_telegram(msg_principal):
+    if MODO_SOLO_REGISTRO:
+        # NUEVO (borrador, sin autorizar): mismo calculo, mismo
+        # historial guardado arriba -- pero NADA se manda a Telegram.
+        print(f"[MODO SOLO REGISTRO] Recomendacion principal (no enviada): {principal[0]} | {principal[2]} | {principal[4]} | prob={principal[5]*100:.1f}%")
+    elif enviar_telegram(msg_principal):
         print(f"Recomendacion principal enviada: {principal[0]} | {principal[2]} | {principal[4]} | prob={principal[5]*100:.1f}%")
 
     for nombre, deporte, mercado, inicio, resultado, prob, cuota in hallazgos[1:]:
         msg = formatear_alternativa(nombre, deporte, mercado, inicio, resultado, prob, cuota)
-        if enviar_telegram(msg):
+        if MODO_SOLO_REGISTRO:
+            print(f"[MODO SOLO REGISTRO] Alternativa (no enviada): {nombre} | {mercado} | {resultado} | prob={prob*100:.1f}%")
+        elif enviar_telegram(msg):
             print(f"Alternativa enviada: {nombre} | {mercado} | {resultado} | prob={prob*100:.1f}%")
 
 
