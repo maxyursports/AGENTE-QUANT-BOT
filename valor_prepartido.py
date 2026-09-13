@@ -202,7 +202,11 @@ NOMBRES_MERCADO = {
 }
 
 # Ventana hacia adelante en la que buscamos partidos (horas).
-VENTANA_HORAS = 6
+# Configurable por variable de entorno VENTANA_HORAS -- permite usar
+# una ventana mas larga en la corrida nocturna (12h) y mas corta en
+# las corridas del dia (5h) sin duplicar el script. Default 6 si no
+# se define (ej. al correr manualmente con workflow_dispatch).
+VENTANA_HORAS = int(os.environ.get("VENTANA_HORAS", "6").strip() or "6")
 
 # AJUSTE 2026-08-30 (pedido explicito del usuario -- ver docstring del
 # modulo): probabilidad minima para considerar una senal. Ya no se
