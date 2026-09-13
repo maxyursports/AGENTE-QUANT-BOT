@@ -160,7 +160,6 @@ LIGAS_FUTBOL = [
     "soccer_sweden_superettan",
     "soccer_germany_liga3",
     "soccer_germany_bundesliga_women",
-    "soccer_germany_dfb_pokal",
     "soccer_spain_copa_del_rey",
 ]
 
