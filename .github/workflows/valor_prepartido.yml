@@ -6,14 +6,23 @@ name: Valor pre-partido (Superagente Quant)
 # circuit breaker de DISCIPLINA.md (2026-08-29). Decision tomada a
 # pedido explicito del usuario, aceptando ese riesgo. Monitorear de
 # cerca los resultados de los primeros dias y estar listos para volver
-# a MODO_SOLO_REGISTRO o pausar el cron si se repite la tasa de ruido
-# que origino la pausa anterior (23 y 15 "hallazgos" en las primeras 2
-# corridas reales).
+# a MODO_SOLO_REGISTRO o pausar el cron de nuevo si se repite la tasa
+# de ruido que origino la pausa anterior (23 y 15 "hallazgos" en las
+# primeras 2 corridas reales).
+#
+# Horario ajustado el mismo dia (2026-09-13) para cubrir las 24 horas
+# sin huecos: VENTANA_HORAS en valor_prepartido.py es de 6 horas hacia
+# adelante desde el momento de cada corrida, asi que 4 corridas cada 6
+# horas exactas cubren el dia completo sin dejar ninguna franja sin
+# revisar y sin solaparse entre si. Horarios en UTC (hora Colombia
+# entre parentesis): 05:00 (00:00), 11:00 (06:00), 17:00 (12:00) y
+# 23:00 (18:00).
 on:
   schedule:
-    - cron: "0 9 * * *"
-    - cron: "0 15 * * *"
-    - cron: "0 20 * * *"
+    - cron: "0 5 * * *"
+    - cron: "0 11 * * *"
+    - cron: "0 17 * * *"
+    - cron: "0 23 * * *"
   workflow_dispatch: {}
 
 permissions:
