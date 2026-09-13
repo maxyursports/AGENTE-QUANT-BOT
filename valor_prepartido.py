@@ -150,6 +150,18 @@ LIGAS_FUTBOL = [
     "soccer_france_ligue_two",
     "soccer_italy_serie_b",
     "soccer_brazil_serie_b",
+    "soccer_australia_aleague",
+    "soccer_china_superleague",
+    "soccer_greece_super_league",
+    "soccer_league_of_ireland",
+    "soccer_poland_ekstraklasa",
+    "soccer_russia_premier_league",
+    "soccer_finland_veikkausliiga",
+    "soccer_sweden_superettan",
+    "soccer_germany_liga3",
+    "soccer_germany_bundesliga_women",
+    "soccer_germany_dfb_pokal",
+    "soccer_spain_copa_del_rey",
 ]
 
 # Otros deportes pedidos explicitamente por el usuario (2026-08-30):
