@@ -10,19 +10,30 @@ name: Valor pre-partido (Superagente Quant)
 # de ruido que origino la pausa anterior (23 y 15 "hallazgos" en las
 # primeras 2 corridas reales).
 #
-# Horario ajustado el mismo dia (2026-09-13) para cubrir las 24 horas
-# sin huecos: VENTANA_HORAS en valor_prepartido.py es de 6 horas hacia
-# adelante desde el momento de cada corrida, asi que 4 corridas cada 6
-# horas exactas cubren el dia completo sin dejar ninguna franja sin
-# revisar y sin solaparse entre si. Horarios en UTC (hora Colombia
-# entre parentesis): 05:00 (00:00), 11:00 (06:00), 17:00 (12:00) y
-# 23:00 (18:00).
+# Horario simplificado el 2026-09-13 (tercer ajuste, mismo dia) a
+# pedido explicito del propietario: en vez de varias corridas al dia,
+# ahora solo 2 corridas diarias, a las 4am y a las 4pm hora Colombia
+# (09:00 y 21:00 UTC). Como las 2 corridas quedan exactamente 12 horas
+# separadas entre si, VENTANA_HORAS se fija en 12 para que cada
+# corrida cubra exactamente hasta la siguiente, sin huecos ni
+# solapamiento.
+#
+# En el mismo cambio se amplio la cobertura de ligas de futbol (ver
+# LIGAS_FUTBOL en valor_prepartido.py) de 34 a 46, para darle al
+# agente mas oportunidades de encontrar valor, aprovechando el
+# presupuesto de creditos que sobra al bajar de 4 a 2 corridas
+# diarias. Con 46 ligas de futbol + basquet/hockey/beisbol fijos +
+# tenis/eSports dinamicos (hasta 8 y 6 respectivamente), el consumo
+# mensual queda, en el peor caso posible (mes de 31 dias, tenis y
+# eSports al maximo en las 2 corridas de cada dia), en aproximadamente
+# 19,900 creditos -- por debajo del tope de 20,000 creditos/mes del
+# plan contratado (USD $30/mes), sin superarlo nunca. En meses mas
+# cortos o con menos torneos activos el consumo real sera menor a
+# esa cifra.
 on:
   schedule:
-    - cron: "0 5 * * *"
-    - cron: "0 11 * * *"
-    - cron: "0 17 * * *"
-    - cron: "0 23 * * *"
+    - cron: "0 9 * * *"
+    - cron: "0 21 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -48,6 +59,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          VENTANA_HORAS: "12"
         run: python valor_prepartido.py
 
       - name: Guardar historial de cuotas
