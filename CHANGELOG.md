@@ -210,3 +210,64 @@ Formato: fecha, que cambio, por que.
 - **Limitacion honesta que sigue vigente**: la "probabilidad" que calcula el bot sigue siendo la probabilidad implicita en las propias cuotas de 1xBet (que tan favorito es un resultado segun la casa), NO un analisis de lesionados, alineaciones, formaciones o forma de jugadores -- esa fuente de datos de futbol real aun no esta conectada al sistema (ver entrada anterior sobre API-Football/Sportmonks, todavia sin contratar).
 - **Pendiente**: correr el workflow manualmente contra la API real con este nuevo metodo y reportar el resultado real al usuario -- incluyendo, si corresponde, la recomendacion directa de apuesta, o una explicacion honesta si tampoco hay ninguna senal que llegue al 55%.
 - **No fabricado**: este cambio de diseno responde directamente a una instruccion explicita y verbatim del usuario, no a una decision unilateral del asistente. El codigo fue verificado por sintaxis (ast.parse) antes de publicarse y el contenido publicado fue verificado byte a byte via curl contra el archivo raw de GitHub tras el commit.
+
+
+## 2026-09-11 (modo solo registro para validacion de CLV)
+
+- **Contexto**: DISCIPLINA.md exige, antes de reactivar el cron automatico
+  pausado el 2026-08-29 (circuit breaker por 23 y 15 "hallazgos" en las
+  primeras 2 corridas reales), correr un periodo de prueba en modo
+  "solo registro" (sin enviar a Telegram) para medir Closing Line Value
+  (CLV). El propio historial (`estado/historial_cuotas.jsonl`) no
+  guardaba la hora de inicio del partido, por lo que ese backtest era
+  imposible de hacer con los datos existentes.
+- **Cambios en valor_prepartido.py (PR #5)**:
+  1. Nueva variable de entorno `MODO_SOLO_REGISTRO` (default `false`):
+     cuando esta en `"true"`, el bot sigue calculando y guardando los
+     hallazgos en el historial (con prefijo de log
+     `[MODO SOLO REGISTRO]`), pero NO los envia a Telegram.
+  2. `guardar_en_historial()` ahora acepta y guarda `commence_time_utc`
+     (hora de inicio del partido), necesario para poder medir CLV mas
+     adelante comparando la cuota registrada contra el cierre de linea.
+  3. Se agrego `MODO_SOLO_REGISTRO: "true"` al workflow
+     `valor_prepartido.yml` (manual, `workflow_dispatch`) para poder
+     probarlo sin riesgo de enviar alertas no validadas.
+- **Corridas de prueba (2026-09-11)**: 2 corridas manuales exitosas en
+  modo solo registro (runs #10 y #11), ambas encontraron los mismos 4
+  hallazgos (>=55% de probabilidad) sin enviar ningun mensaje a
+  Telegram -- confirmado en los logs (`[MODO SOLO REGISTRO]
+  Recomendacion principal (no enviada): ...`).
+- **Limitacion honesta**: las 2 corridas de prueba fueron con minutos de
+  diferencia entre si (mismo snapshot de mercado, no datos diversos) --
+  no equivalen al periodo de varios dias que DISCIPLINA.md pide para
+  medir CLV de forma confiable.
+
+## 2026-09-13 (reactivacion del cron automatico y de las alertas en vivo, sin completar el periodo de validacion de CLV)
+
+- **Decision explicita del propietario**: se le explico en detalle que
+  activar las alertas en vivo ahora implicaba saltarse el periodo de
+  validacion de Closing Line Value (CLV) que exige el circuit breaker
+  de DISCIPLINA.md (ver entrada del 2026-08-29 y la entrada anterior de
+  este mismo dia), ya que solo existen las 2 corridas de prueba en modo
+  solo registro, tomadas casi al mismo tiempo. El propietario respondio
+  explicitamente: "activalo ya y vamos mirando resultados" -- aceptando
+  ese riesgo conscientemente, para monitorear resultados reales en vivo
+  en vez de seguir esperando el periodo de validacion completo.
+- **Cambios en valor_prepartido.yml (PR #6)**:
+  1. Se quita `MODO_SOLO_REGISTRO` -- el bot vuelve a enviar los
+     hallazgos a Telegram normalmente.
+  2. Se reagrega el `schedule` automatico con las mismas 3 corridas
+     diarias del diseno original (antes de la pausa del 2026-08-29):
+     `0 9 * * *`, `0 15 * * *` y `0 20 * * *` (UTC), ademas de
+     `workflow_dispatch` para ejecucion manual.
+- **Riesgo aceptado explicitamente**: la tasa de "hallazgos" del bot no
+  ha sido validada con un periodo de prueba multi-dia ni con Closing
+  Line Value real -- existe la posibilidad de que se repita la misma
+  tasa de ruido que origino la pausa original (23 y 15 hallazgos en las
+  primeras 2 corridas reales de agosto). Queda pendiente monitorear de
+  cerca los resultados de los primeros dias del cron reactivado y estar
+  listos para volver a `MODO_SOLO_REGISTRO` o pausar el cron de nuevo
+  si se repite ese patron.
+- **No fabricado**: esta entrada documenta una decision explicita del
+  propietario, comunicada de forma directa en el chat, no una decision
+  unilateral del asistente.
