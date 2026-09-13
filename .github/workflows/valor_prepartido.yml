@@ -19,7 +19,7 @@ name: Valor pre-partido (Superagente Quant)
 # solapamiento.
 #
 # En el mismo cambio se amplio la cobertura de ligas de futbol (ver
-# LIGAS_FUTBOL en valor_prepartido.py) de 34 a 46, para darle al
+# LIGAS_FUTBOL en valor_prepartido.py) de 35 a 46, para darle al
 # agente mas oportunidades de encontrar valor, aprovechando el
 # presupuesto de creditos que sobra al bajar de 4 a 2 corridas
 # diarias. Con 46 ligas de futbol + basquet/hockey/beisbol fijos +
