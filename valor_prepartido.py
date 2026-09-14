@@ -289,7 +289,15 @@ NOMBRES_MERCADO = {
 }
 
 # Ventana hacia adelante en la que buscamos partidos (horas).
-VENTANA_HORAS = 6
+VENTANA_HORAS = 12
+
+# AJUSTE 2026-09-14 (pedido explicito del usuario, tras aclarar una
+# inconsistencia: VENTANA_HORAS estaba en 6 horas, no en 12 como se
+# penso en un momento -- esto dejaba un hueco de 6 horas sin cobertura
+# entre las dos corridas automaticas diarias, que estan separadas por
+# 12 horas -- 4am y 4pm hora Colombia). Se sube a 12 para que la
+# ventana de busqueda coincida exactamente con la separacion entre
+# corridas automaticas y no queden partidos sin revisar entre una y otra.
 
 # AJUSTE 2026-08-30 (pedido explicito del usuario -- ver docstring del
 # modulo): probabilidad minima para considerar una senal. Ya no se
