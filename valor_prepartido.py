@@ -191,9 +191,21 @@ LIGAS_FUTBOL = [
 # baloncesto, hockey sobre hielo, beisbol, eSports. Claves estables de
 # The Odds API (no cambian temporada a temporada como los torneos de
 # tenis).
-LIGAS_BALONCESTO = ["basketball_nba", "basketball_ncaab", "basketball_euroleague"]
+LIGAS_BALONCESTO = ["basketball_nba", "basketball_ncaab", "basketball_euroleague", "basketball_wnba"]
 LIGAS_HOCKEY = ["icehockey_nhl"]
 LIGAS_BEISBOL = ["baseball_mlb"]
+
+# AJUSTE 2026-09-14 (pedido explicito del usuario: "podriamos meter
+# otros deportes?"): se agregan futbol americano, rugby y handball.
+# Alcanza el presupuesto porque el fix del 422 de mas arriba bajo el
+# costo real de futbol de hasta 6 creditos/liga a 3 fijos -- el peor
+# caso mensual quedo en ~11,350 creditos en vez de los ~19,900
+# calculados antes de ese fix, dejando margen de sobra dentro del
+# tope de 20,000 creditos/mes. Claves verificadas una por una contra
+# el catalogo oficial de The Odds API antes de agregarlas.
+LIGAS_FUTBOL_AMERICANO = ["americanfootball_nfl", "americanfootball_ncaaf", "americanfootball_cfl"]
+LIGAS_RUGBY = ["rugbyleague_nrl", "rugbyunion_six_nations"]
+LIGAS_HANDBALL = ["handball_germany_bundesliga"]
 # AJUSTE 2026-08-30 (fix critico post-ronda real): las claves fijas
 # "esports_csgo", "esports_dota2", "esports_valorant" dieron 404 Not
 # Found en la ronda real -- no son claves validas de The Odds API tal
@@ -228,6 +240,10 @@ MERCADOS_POR_GRUPO = {
     "baseball": "h2h,spreads,totals",
     "tennis": "h2h,spreads,totals",
     "esports": "h2h",
+    "americanfootball": "h2h,spreads,totals",
+    "rugbyleague": "h2h,spreads,totals",
+    "rugbyunion": "h2h,spreads,totals",
+    "handball": "h2h,spreads,totals",
 }
 
 # Nombres legibles en español para cada mercado, usados en los
@@ -286,6 +302,10 @@ def grupo_de_sport_key(sport_key: str) -> str:
         ("baseball_", "baseball"),
         ("tennis_", "tennis"),
         ("esports_", "esports"),
+        ("americanfootball_", "americanfootball"),
+        ("rugbyleague_", "rugbyleague"),
+        ("rugbyunion_", "rugbyunion"),
+        ("handball_", "handball"),
     ]
     for prefijo, grupo in prefijos:
         if sport_key.startswith(prefijo):
@@ -602,7 +622,7 @@ def ejecutar_ronda() -> None:
     print(f"[INFO] Ligas de eSports activas detectadas (max {MAX_LIGAS_ESPORTS}): {ligas_esports}")
 
     deportes_a_revisar = (
-        LIGAS_FUTBOL + LIGAS_BALONCESTO + LIGAS_HOCKEY + LIGAS_BEISBOL + torneos_tenis + ligas_esports
+        LIGAS_FUTBOL + LIGAS_BALONCESTO + LIGAS_HOCKEY + LIGAS_BEISBOL + torneos_tenis + ligas_esports + LIGAS_FUTBOL_AMERICANO + LIGAS_RUGBY + LIGAS_HANDBALL
     )
 
     for sport_key in deportes_a_revisar:
