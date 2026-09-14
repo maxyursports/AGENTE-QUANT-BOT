@@ -18,7 +18,8 @@ AJUSTE 2026-08-30 (pedido explicito del usuario, cambio de metodo):
   calcula EXCLUSIVAMENTE con las cuotas que ofrece 1xBet para ese
   mismo partido (implicita = 1/cuota, devigged dividiendo por la suma
   de todas las implicitas de 1xBet DENTRO DEL MISMO MERCADO). El
-  umbral minimo de probabilidad es 0.55.
+  umbral minimo de probabilidad es 0.65, con un piso adicional de
+  cuota >= 1.18 (ver AJUSTE 2026-09-14 mas abajo en el codigo).
 
 AJUSTE 2026-08-30 (mismo dia, ampliacion de mercados y deportes,
 pedido explicito del usuario): "Sí, quiero que agregues todos los
@@ -292,7 +293,21 @@ VENTANA_HORAS = 6
 # modulo): probabilidad minima para considerar una senal. Ya no se
 # compara contra otras casas -- esta probabilidad es la implicita en
 # las propias cuotas de 1xBet, devigged dentro de cada mercado.
-UMBRAL_PROBABILIDAD_MINIMA = 0.55
+UMBRAL_PROBABILIDAD_MINIMA = 0.65
+
+# AJUSTE 2026-09-14 (segundo cambio del dia, pedido explicito del
+# usuario: "subamos el umbral al 65% con un piso de cuota 1.18 en
+# adelante"): ademas del umbral de probabilidad de arriba (que subio
+# de 55% a 65%, un cambio real que reduce la cantidad de hallazgos --
+# no como el salto intermedio de 55% a 56% que se descarto por ser
+# practicamente cosmetico), se agrega un piso de cuota. Aviso honesto
+# que se le dio al usuario antes de este cambio: con el vig tipico de
+# 1xBet, una probabilidad devigged de 65% ya corresponde a una cuota
+# real de entre ~1.50 y ~1.60, muy por encima de 1.18 -- asi que este
+# piso funciona como red de seguridad (nunca deberia activarse en la
+# practica), no como el filtro que realmente reduce la cantidad de
+# apuestas. Ese filtro real es el UMBRAL_PROBABILIDAD_MINIMA de arriba.
+CUOTA_MINIMA = 1.18
 
 # AJUSTE 2026-08-30 (ampliacion de mercados): al pedir varios mercados
 # por llamada el costo en creditos por llamada sube (The Odds API
@@ -696,6 +711,8 @@ def ejecutar_ronda() -> None:
                         continue
                     if prob < UMBRAL_PROBABILIDAD_MINIMA:
                         continue
+                    if cuota < CUOTA_MINIMA:
+                        continue
                     print(
                         f"[DETALLE] {nombre_partido} ({sport_key}) | mercado={mercado_legible} | "
                         f"resultado={resultado} | cuota_1xbet={cuota} | prob_1xbet={prob*100:.1f}%"
@@ -707,12 +724,12 @@ def ejecutar_ronda() -> None:
     # La de MAYOR probabilidad va primero -- esa es LA recomendacion.
     hallazgos.sort(key=lambda h: h[5], reverse=True)
 
-    print(f"[INFO] Hallazgos con probabilidad >= {UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% en 1xBet: {len(hallazgos)}")
+    print(f"[INFO] Hallazgos con probabilidad >= {UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% y cuota >= {CUOTA_MINIMA} en 1xBet: {len(hallazgos)}")
     print(f"[INFO] Partidos saltados por no estar en 1xBet: {partidos_sin_1xbet}")
 
     if not hallazgos:
-        print("[INFO] Ronda completada. Ninguna cuota de 1xBet llega al "
-              f"{UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% de probabilidad implicita en esta ventana de tiempo, "
+        print("[INFO] Ronda completada. Ningun resultado cumple los dos filtros "
+              f"(probabilidad implicita >= {UMBRAL_PROBABILIDAD_MINIMA*100:.0f}% Y cuota >= {CUOTA_MINIMA}) en esta ventana de tiempo, "
               "en ningun mercado ni deporte revisado.")
         return
 
