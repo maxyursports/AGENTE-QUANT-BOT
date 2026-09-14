@@ -270,7 +270,7 @@ MERCADOS_POR_GRUPO = {
     "esports": "h2h",
     "americanfootball": "h2h,spreads,totals",
     "rugbyleague": "h2h,spreads,totals",
-    "rugbyunion": "h2h,spreads,totals",
+    
     "handball": "h2h,spreads,totals",
 }
 
@@ -332,7 +332,7 @@ def grupo_de_sport_key(sport_key: str) -> str:
         ("esports_", "esports"),
         ("americanfootball_", "americanfootball"),
         ("rugbyleague_", "rugbyleague"),
-        ("rugbyunion_", "rugbyunion"),
+
         ("handball_", "handball"),
     ]
     for prefijo, grupo in prefijos:
