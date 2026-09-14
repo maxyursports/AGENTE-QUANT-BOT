@@ -18,8 +18,10 @@ AJUSTE 2026-08-30 (pedido explicito del usuario, cambio de metodo):
   calcula EXCLUSIVAMENTE con las cuotas que ofrece 1xBet para ese
   mismo partido (implicita = 1/cuota, devigged dividiendo por la suma
   de todas las implicitas de 1xBet DENTRO DEL MISMO MERCADO). El
-  umbral minimo de probabilidad es 0.65, con un piso adicional de
-  cuota >= 1.18 (ver AJUSTE 2026-09-14 mas abajo en el codigo).
+  umbral minimo de probabilidad es 0.50 (ver AJUSTE
+  2026-09-14 mas abajo en el codigo -- bajado de 0.65 el mismo dia,
+  a pedido explicito del usuario, tras ver que 0.65 devolvia 0 hallazgos
+  en la primera prueba real).
 
 AJUSTE 2026-08-30 (mismo dia, ampliacion de mercados y deportes,
 pedido explicito del usuario): "Sí, quiero que agregues todos los
@@ -293,7 +295,18 @@ VENTANA_HORAS = 6
 # modulo): probabilidad minima para considerar una senal. Ya no se
 # compara contra otras casas -- esta probabilidad es la implicita en
 # las propias cuotas de 1xBet, devigged dentro de cada mercado.
-UMBRAL_PROBABILIDAD_MINIMA = 0.65
+UMBRAL_PROBABILIDAD_MINIMA = 0.50
+
+# AJUSTE 2026-09-14 (tercer cambio del dia sobre este umbral, pedido
+# explicito del usuario: "baja de inmediato el umbral al 50%"): se
+# habia subido de 0.55 a 0.65 mas arriba en el codigo (ver comentario
+# de CUOTA_MINIMA), pero la primera prueba real con 0.65 (corrida
+# manual #16, mismo dia) devolvio 0 hallazgos en una ventana de 12
+# horas con Champions League, Premier League, La Liga y NFL activos --
+# demasiado restrictivo para el uso que el propietario le quiere dar
+# al bot. Se baja a 0.50, mas permisivo que el 0.55 original. El piso
+# de cuota (CUOTA_MINIMA = 1.18, ver mas abajo) NO se toco -- sigue
+# aplicando ademas de este umbral.
 
 # AJUSTE 2026-09-14 (segundo cambio del dia, pedido explicito del
 # usuario: "subamos el umbral al 65% con un piso de cuota 1.18 en
