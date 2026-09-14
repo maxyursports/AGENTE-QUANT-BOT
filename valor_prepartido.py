@@ -66,6 +66,30 @@ que puedo hacer."
   freno de seguridad de creditos (UMBRAL_CREDITOS_SEGURIDAD) de 15 a
   50 para compensar, y se sigue deteniendo la ronda si el saldo baja
   demasiado, para nunca dejar la cuenta en 0 a mitad de mes.
+AJUSTE 2026-09-14 (fix definitivo del 422, no solo un parche): se
+investigo contra la documentacion oficial de The Odds API y se
+confirmo que el endpoint masivo /v4/sports/{sport}/odds SOLO soporta
+los mercados h2h, spreads, totals y outrights -- la documentacion lo
+dice explicitamente. btts, draw_no_bet y double_chance (agregados el
+2026-08-30 de buena fe, pidiendolos "porque The Odds API los soporta
+para futbol") en realidad NUNCA funcionaron en este endpoint: fallaban
+con 422 en las 46 ligas de futbol, en el 100% de las rondas, desde que
+se agregaron. No era un problema intermitente ni de una liga puntual.
+El bot seguia funcionando porque ya tenia un fallback automatico al
+combo basico (h2h,totals,spreads) -- pero eso escondia que esos 3
+mercados extra jamas se estaban usando de verdad. Se corrige pidiendo
+directamente el combo que SI funciona (ver MERCADOS_POR_GRUPO mas
+abajo), sin gastar una llamada de mas en algo que siempre iba a
+fallar. Para conseguir btts/draw_no_bet/double_chance de verdad haria
+falta el endpoint POR PARTIDO (/v4/sports/{sport}/events/{eventId}/odds),
+que cuesta una llamada extra por cada partido individual -- con
+cientos de partidos por corrida eso rompe el presupuesto de 20,000
+creditos/mes calibrado para 46 ligas x 2 corridas/dia. Queda como
+mejora futura si el usuario decide que vale la pena ese costo. De
+paso, esto tambien corrige a la baja el costo real por liga: nunca fue
+hasta 6 creditos como decia la nota de abajo, siempre fue 3 (el 422
+nunca llego a cobrar credito, solo el fallback de 3 mercados).
+
 
 LIMITACION HONESTA QUE SIGUE VIGENTE: la probabilidad que calcula este
 bot sigue siendo la probabilidad IMPLICITA en las cuotas de 1xBet
@@ -187,13 +211,18 @@ MAX_TORNEOS_TENIS = 8
 
 # Mercados a solicitar por grupo de deporte. h2h = ganador del
 # partido/set; totals = total de goles/puntos/juegos; spreads =
-# hándicap; btts = ambos anotan (solo futbol); draw_no_bet = sin
-# empate (solo futbol); double_chance = doble oportunidad (solo
-# futbol). Estos son los mercados que The Odds API efectivamente
-# soporta -- no cubre corners, tarjetas, marcador exacto, ni mercados
-# de jugador (ver LIMITACION HONESTA en el docstring del modulo).
+# hándicap. Estos son los UNICOS mercados que soporta el endpoint
+# MASIVO de The Odds API (/v4/sports/{sport}/odds) -- la
+# documentacion oficial dice explicitamente: "Valid markets are h2h,
+# spreads, totals and outrights". btts, draw_no_bet y double_chance
+# se retiraron de aqui el 2026-09-14: nunca funcionaron en este
+# endpoint (422 en el 100% de las rondas desde que se agregaron el
+# 2026-08-30) -- no cubre corners, tarjetas, marcador exacto, ni
+# mercados de jugador tampoco (ver LIMITACION HONESTA en el
+# docstring del modulo, y el AJUSTE 2026-09-14 para el detalle
+# completo de la investigacion).
 MERCADOS_POR_GRUPO = {
-    "soccer": "h2h,totals,spreads,btts,draw_no_bet,double_chance",
+    "soccer": "h2h,totals,spreads",
     "basketball": "h2h,spreads,totals",
     "icehockey": "h2h,spreads,totals",
     "baseball": "h2h,spreads,totals",
@@ -333,21 +362,20 @@ def _pedir_odds(sport_key: str, markets: str):
     return resp
 
 
-# AJUSTE 2026-08-30 (fix critico post-ronda real): pedir los 6
-# mercados de futbol juntos (h2h,totals,spreads,btts,draw_no_bet,
-# double_chance) devolvio 422 "Unprocessable Entity" en las 32 ligas
-# de futbol en la ronda real de las 09:14 UTC -- The Odds API rechazo
-# la combinacion completa (probablemente btts/draw_no_bet/
-# double_chance no son validos juntos con el resto en la region "eu"
-# para muchas ligas). Resultado real: 0 partidos de futbol analizados
-# esa ronda, el deporte principal del usuario quedo sin cobertura.
-# Fallback: si la peticion con todos los mercados falla, se reintenta
-# SOLO con el combo basico h2h,totals,spreads (probado, funciona --
-# ver logs reales de basketball/hockey/baseball/tenis en esa misma
-# ronda). Esto prioriza tener datos reales de futbol sobre tener
-# todos los mercados; los mercados adicionales (btts, draw_no_bet,
-# double_chance) quedan pendientes de una investigacion mas
-# cuidadosa de que combinaciones acepta la API por region/liga.
+# AJUSTE 2026-09-14 (fix definitivo, no solo el parche del
+# 2026-08-30): el problema del 422 no era intermitente ni por liga --
+# se confirmo contra la documentacion oficial de The Odds API que el
+# endpoint masivo /v4/sports/{sport}/odds SOLO soporta h2h, spreads,
+# totals y outrights. btts, draw_no_bet y double_chance jamas iban a
+# funcionar ahi, sin importar la liga o la ronda -- por eso fallaban
+# las 46 ligas de futbol, en el 100% de las rondas, desde que se
+# agregaron el 2026-08-30. El fallback de abajo encubria el sintoma
+# (el bot seguia funcionando) pero escondia que esos 3 mercados
+# extra nunca se estaban usando de verdad. Ahora MERCADOS_POR_GRUPO
+# pide directamente el combo que SI funciona, asi que este fallback
+# ya no deberia activarse nunca para futbol -- se deja como respaldo
+# defensivo generico ante cualquier otro 422 inesperado en el futuro
+# (ej. un problema temporal de la API en cualquier deporte).
 MERCADOS_BASICOS_FALLBACK = "h2h,totals,spreads"
 
 
