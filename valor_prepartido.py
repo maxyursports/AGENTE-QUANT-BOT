@@ -185,6 +185,34 @@ LIGAS_FUTBOL = [
     "soccer_germany_liga3",
     "soccer_germany_bundesliga_women",
     "soccer_spain_copa_del_rey",
+
+    # AJUSTE 2026-09-14 (segunda tanda, pedido explicito del usuario:
+    # "que mas mercados o deportes de valor podriamos meter para llegar
+    # a los 20 mil creditos mensuales"): se agregan las 18 competencias
+    # de futbol que quedaban afuera del catalogo oficial de The Odds
+    # API con mercados de partido reales (h2h/spreads/totals, no solo
+    # "outrights"/futuros), verificadas una por una antes de agregarlas.
+    # Con esto el peor caso mensual sube de ~12,462 a ~15,810 creditos,
+    # dentro del tope de 20,000/mes. No quedan mas competencias de
+    # futbol con mercados de partido sin agregar en el catalogo oficial.
+    "soccer_fifa_world_cup",
+    "soccer_fifa_world_cup_qualifiers_europe",
+    "soccer_fifa_world_cup_qualifiers_south_america",
+    "soccer_fifa_world_cup_womens",
+    "soccer_fifa_club_world_cup",
+    "soccer_concacaf_leagues_cup",
+    "soccer_conmebol_copa_america",
+    "soccer_conmebol_copa_sudamericana",
+    "soccer_uefa_champs_league_qualification",
+    "soccer_uefa_champs_league_women",
+    "soccer_uefa_european_championship",
+    "soccer_uefa_euro_qualification",
+    "soccer_uefa_nations_league",
+    "soccer_fa_cup",
+    "soccer_england_efl_cup",
+    "soccer_france_coupe_de_france",
+    "soccer_italy_coppa_italia",
+    "soccer_germany_dfb_pokal",
 ]
 
 # Otros deportes pedidos explicitamente por el usuario (2026-08-30):
@@ -204,7 +232,7 @@ LIGAS_BEISBOL = ["baseball_mlb"]
 # tope de 20,000 creditos/mes. Claves verificadas una por una contra
 # el catalogo oficial de The Odds API antes de agregarlas.
 LIGAS_FUTBOL_AMERICANO = ["americanfootball_nfl", "americanfootball_ncaaf", "americanfootball_cfl"]
-LIGAS_RUGBY = ["rugbyleague_nrl", "rugbyunion_six_nations"]
+LIGAS_RUGBY = ["rugbyleague_nrl"]
 LIGAS_HANDBALL = ["handball_germany_bundesliga"]
 # AJUSTE 2026-08-30 (fix critico post-ronda real): las claves fijas
 # "esports_csgo", "esports_dota2", "esports_valorant" dieron 404 Not
