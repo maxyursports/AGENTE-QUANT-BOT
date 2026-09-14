@@ -1,16 +1,22 @@
 name: Monitor de partidos en vivo (Superagente Quant)
 
-# Cada 15 minutos -- con el plan de pago "20K" de The Odds API
-# (USD $30/mes, 20,000 créditos/mes, activo desde ago-2026) hay
-# presupuesto de sobra para revisar las 13 ligas completas a esta
-# frecuencia; ver la explicación completa al inicio de
-# telegram_alert_bot.py. El propio script se detiene solo si en algún
-# momento quedan pocos créditos disponibles ese mes.
+# PAUSADO 2026-09-14 -- pedido explicito del propietario ("el bot de
+# cuotas en vivo dejalo apagado definitivamente hasta que yo te diga
+# que lo activemos"). El cron de "cada 15 minutos" se retira por
+# completo del trigger automatico: solo queda workflow_dispatch, asi
+# que esto SOLO corre si alguien lo dispara manualmente desde la
+# pestaña Actions. No lo reactives (no le agregues de nuevo un bloque
+# "schedule:") a menos que el propietario lo pida explicitamente.
+#
+# Motivo: se confirmo que este workflow llevaba corriendo cada 15
+# minutos de forma continua (111+ corridas), consumiendo creditos
+# reales de The Odds API (revisa 25 ligas por corrida, ~25-50
+# creditos/corrida) sin que el propietario lo supiera -- se le habia
+# dicho que quedaba "apagado" pero el cron seguia activo en este
+# archivo. Ver telegram_alert_bot.py para el detalle del bot en si
+# (ese codigo NO se toco, solo se le quito el disparador automatico).
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
-
 permissions:
   contents: write
 
