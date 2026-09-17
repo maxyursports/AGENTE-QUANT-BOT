@@ -289,7 +289,14 @@ NOMBRES_MERCADO = {
 }
 
 # Ventana hacia adelante en la que buscamos partidos (horas).
-VENTANA_HORAS = 12
+VENTANA_HORAS = 24
+
+# AJUSTE 2026-09-17 (pedido explicito del usuario: se elimina el cron
+# automatico -- ver .github/workflows/valor_prepartido.yml -- y el bot
+# pasa a correr solo manualmente, 1 a 4 veces al dia segun disponibilidad
+# del propietario). Se sube VENTANA_HORAS de 12 a 24 para que cada
+# corrida manual cubra un dia completo de partidos hacia adelante, sin
+# depender de una segunda corrida programada para cerrar el hueco.
 
 # AJUSTE 2026-09-14 (pedido explicito del usuario, tras aclarar una
 # inconsistencia: VENTANA_HORAS estaba en 6 horas, no en 12 como se
