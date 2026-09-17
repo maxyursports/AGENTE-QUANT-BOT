@@ -117,6 +117,7 @@ import pathlib
 from datetime import datetime, timezone, timedelta
 
 import requests
+import time
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -633,15 +634,32 @@ def enviar_telegram(mensaje: str) -> bool:
         print("[ERROR] Falta TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID.")
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    resp = requests.post(
-        url,
-        data={"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"},
-        timeout=15,
-    )
-    if resp.status_code != 200:
-        print(f"[ERROR] Telegram respondio {resp.status_code}: {resp.text}")
-        return False
-    return True
+    # AJUSTE 2026-09-17 (pedido explicito del usuario, tras ver que la
+    # corrida manual #25 fallo con exit code 1 por un
+    # ConnectionResetError transitorio de red al enviar un mensaje a
+    # Telegram, aun cuando ya se habian enviado con exito la
+    # recomendacion principal y varias alternativas). Se agregan
+    # reintentos con backoff para que un corte de red pasajero no
+    # tumbe toda la corrida ni impida el envio del resto de alertas.
+    intentos_max = 3
+    for intento in range(1, intentos_max + 1):
+        try:
+            resp = requests.post(
+                url,
+                data={"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"},
+                timeout=15,
+            )
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+            print(f"[ERROR] Telegram fallo de red (intento {intento}/{intentos_max}): {exc}")
+            if intento < intentos_max:
+                time.sleep(2 * intento)
+                continue
+            return False
+        if resp.status_code != 200:
+            print(f"[ERROR] Telegram respondio {resp.status_code}: {resp.text}")
+            return False
+        return True
+    return False
 
 
 def formatear_recomendacion_principal(partido_nombre: str, deporte: str, mercado: str, inicio: str,
